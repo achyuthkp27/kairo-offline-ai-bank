@@ -25,18 +25,19 @@ if (!IS_NATIVE_AVAILABLE) {
 }
 
 export const LLAMA_CONFIG = {
-  systemPrompt: `You are Kairo, an elite private banking AI concierge. Be professional, extremely concise, and authoritative. Keep conversational responses under 2 sentences.
+  systemPrompt: `You are Kairo, an elite private banking AI concierge. Be professional and data-driven.
 CRITICAL RULES:
-1. Rely ONLY on the live data provided in the prompt. Do NOT hallucinate account numbers, recipients, or features.
-2. If the user asks to perform a system action (transfer funds, freeze card, list recipients), DO NOT ask for their account details. Instead, output ONLY this JSON block so the app can handle it:
+1. When explaining insights or spending, ALWAYS provide a breakdown of specific dates and amounts from the provided [LIVE_DATA] or [RAG] context.
+2. Rely ONLY on the live data provided. Do NOT hallucinate account numbers or transactions.
+3. If the user asks to perform a system action (transfer, freeze), output ONLY this JSON:
 \`\`\`json
 {"action": "transfer", "details": "intent"}
 \`\`\`
-3. If the user asks to navigate (go to wealth, investments, transactions, etc), output ONLY this JSON block:
+4. For navigation, output ONLY:
 \`\`\`json
-{"action": "navigate", "details": "wealth"} 
+{"action": "navigate", "details": "page"} 
 \`\`\`
-Valid navigation details: "dashboard", "transactions", "wealth", "ai".`,
+Valid pages: "dashboard", "transactions", "wealth", "ai".`,
 };
 
 class LlamaEngine {
@@ -70,10 +71,10 @@ class LlamaEngine {
       const t0 = Date.now();
       console.log('[LlamaEngine] Pre-filling KV Cache + pre-caching DB context...');
       
-      // Pre-cache database context in parallel with KV warmup
+      // Pre-cache broader database context
       const [netWorth, recentTxns] = await Promise.all([
         fetchTotalNetWorth(),
-        fetchRecentTransactions(3),
+        fetchRecentTransactions(10),
       ]);
       this.cachedNetWorth = netWorth;
       this.cachedRecentTxns = recentTxns;
@@ -127,8 +128,6 @@ class LlamaEngine {
           n_ctx: 1024,
           n_gpu_layers: 50,
           n_batch: 512,
-          // Note: embeddings disabled — Qwen instruct models don't support embedding mode.
-          // Semantic search uses keyword fallback instead.
         });
         console.log(`[LlamaEngine] Context initialized in ${Date.now() - t0}ms`);
         
@@ -175,11 +174,11 @@ class LlamaEngine {
     // Use pre-cached data for speed, with fresh fallback
     const [netWorth, recentTxns, relevantMemories, subscriptions, predictions, ...keywordResults] = await Promise.all([
       this.cachedNetWorth > 0 ? Promise.resolve(this.cachedNetWorth) : fetchTotalNetWorth(),
-      this.cachedRecentTxns.length > 0 ? Promise.resolve(this.cachedRecentTxns) : fetchRecentTransactions(3),
+      this.cachedRecentTxns.length > 0 ? Promise.resolve(this.cachedRecentTxns) : fetchRecentTransactions(10),
       MemoryService.getRelevantMemories(userQuery, 3),
       this.cachedSubscriptions.length > 0 ? Promise.resolve(this.cachedSubscriptions) : SubscriptionService.detectSubscriptions(),
       this.cachedPredictions.length > 0 ? Promise.resolve(this.cachedPredictions) : PredictionService.generatePredictions(),
-      ...topKeywords.map(word => SemanticSearchService.searchTransactions(word, 2)),
+      ...topKeywords.map(word => SemanticSearchService.searchTransactions(word, 5)),
     ]);
     
     console.log(`[LlamaEngine] Context built in ${Date.now() - t0}ms`);
@@ -187,7 +186,7 @@ class LlamaEngine {
     // Refresh cache for next query (non-blocking)
     Promise.all([
       fetchTotalNetWorth(), 
-      fetchRecentTransactions(3), 
+      fetchRecentTransactions(10), 
       SubscriptionService.detectSubscriptions(),
       PredictionService.generatePredictions()
     ]).then(([nw, txns, subs, preds]) => {

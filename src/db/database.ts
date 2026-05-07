@@ -105,32 +105,30 @@ const seedDatabase = async (database: SQLite.SQLiteDatabase) => {
 
     // 2. Seed Transactions
     // Run embedding generation asynchronously in background to not block UI
-    import('../ai/embeddingEngine').then(({ embeddingEngine }) => {
-      embeddingEngine.init().then(async () => {
-        console.log('[DB] Generating semantic embeddings for transactions...');
-        for (const txn of MOCK_TRANSACTIONS) {
-          // Create semantic string to embed
-          const semanticText = `${txn.merchantName} ${txn.category} ${txn.type}`;
-          const embedding = await embeddingEngine.generateEmbedding(semanticText);
-          
-          await database.runAsync(
-            'INSERT INTO transactions (id, merchantName, category, type, amount, currency, timestamp, accountSource, status, embedding) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            [
-              txn.id,
-              txn.merchantName,
-              txn.category,
-              txn.type,
-              txn.amount,
-              txn.currency,
-              txn.date.getTime(),
-              txn.accountSource,
-              txn.status,
-              JSON.stringify(embedding)
-            ]
-          );
-        }
-        console.log('[DB] Semantic embeddings seeded successfully');
-      });
+    import('../ai/embeddingEngine').then(async ({ embeddingEngine }) => {
+      console.log('[DB] Seeding transactions...');
+      for (const txn of MOCK_TRANSACTIONS) {
+        // Create semantic string to embed
+        const semanticText = `${txn.merchantName} ${txn.category} ${txn.type}`;
+        const embedding = await embeddingEngine.generateEmbedding(semanticText);
+        
+        await database.runAsync(
+          'INSERT INTO transactions (id, merchantName, category, type, amount, currency, timestamp, accountSource, status, embedding) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          [
+            txn.id,
+            txn.merchantName,
+            txn.category,
+            txn.type,
+            txn.amount,
+            txn.currency,
+            txn.date.getTime(),
+            txn.accountSource,
+            txn.status,
+            JSON.stringify(embedding)
+          ]
+        );
+      }
+      console.log('[DB] Transactions seeded successfully');
     });
 
     // 3. Seed Portfolio Data

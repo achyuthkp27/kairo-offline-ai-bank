@@ -11,6 +11,7 @@ import {
   ScrollView,
   Dimensions,
   Pressable,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { 
@@ -102,8 +103,56 @@ export default function DashboardScreen() {
   }, [activeAccountIndex, setActiveAccount, trigger]);
 
   const handleActionPress = (actionId: string) => {
-    trigger('light');
-    console.log('Action pressed:', actionId);
+    trigger('medium');
+    
+    switch (actionId) {
+      case 'send':
+        router.push('/(tabs)/transactions');
+        break;
+      case 'upi':
+        Alert.alert(
+          'UPI Transfer', 
+          `Ready to send from your ${activeAccount.name}.\n\nDefault ID: achyuth@kairo\nLinked Mobile: +91 91636 00944`,
+          [{ text: 'Setup New ID', style: 'default' }, { text: 'Proceed', style: 'cancel' }]
+        );
+        break;
+      case 'scan':
+        Alert.alert(
+          'Scan QR', 
+          'Initializing secure camera module...\n\nKairo will automatically identify the merchant and apply available rewards.',
+          [{ text: 'Open Scanner', style: 'default' }, { text: 'Cancel', style: 'cancel' }]
+        );
+        break;
+      case 'pay':
+        Alert.alert(
+          'Pay Bills', 
+          'Upcoming Bills:\n\n• Tata Power: ₹2,450 (Due in 3 days)\n• Airtel Fiber: ₹999 (Due in 5 days)\n• ICICI Credit: ₹18,200 (Due in 12 days)',
+          [{ text: 'Pay All', style: 'default' }, { text: 'View Details', style: 'cancel' }]
+        );
+        break;
+      case 'add':
+        Alert.alert(
+          'Add Money', 
+          `Account: ${activeAccount.name}\nNumber: 916360094425\nIFSC: KAIR0001\n\nTransfer via IMPS/NEFT to add funds instantly.`,
+          [{ text: 'Copy Details', onPress: () => trigger('success') }, { text: 'Close', style: 'cancel' }]
+        );
+        break;
+      case 'fd':
+        Alert.alert(
+          'Fixed Deposits', 
+          `Current FD: ${accountDetails.fdMaturityStatus}\n\nTop Rates:\n• 1 Year: 7.20% p.a.\n• 3 Years: 7.50% p.a.\n• Senior Citizen: +0.50%`,
+          [{ text: 'Book New FD', style: 'default' }, { text: 'Close', style: 'cancel' }]
+        );
+        break;
+      case 'invest':
+        router.push('/(tabs)/wealth');
+        break;
+      case 'analytics':
+        router.push('/(tabs)/ai');
+        break;
+      default:
+        console.log('Action pressed:', actionId);
+    }
   };
 
   const activeAccount = accounts[activeAccountIndex];
@@ -148,7 +197,13 @@ export default function DashboardScreen() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Account Insights</Text>
-            <Pressable onPress={() => trigger('light')}>
+            <Pressable 
+              hitSlop={20}
+              onPress={() => {
+                trigger('light');
+                router.push('/ai');
+              }}
+            >
               <Text style={styles.seeAllText}>Manage</Text>
             </Pressable>
           </View>
@@ -202,7 +257,7 @@ export default function DashboardScreen() {
                 insight={insight} 
                 onPress={() => {
                   trigger('medium');
-                  setInitialAIQuery(`Explain this insight: ${insight.description}`);
+                  setInitialAIQuery(`Analyze this insight for me: "${insight.description}". \n\nPlease provide a breakdown of the specific transactions, dates, and amounts from my history that led to this conclusion.`);
                   setAISheetVisible(true);
                 }} 
               />
@@ -280,7 +335,10 @@ export default function DashboardScreen() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Recent Transactions</Text>
-            <Pressable onPress={() => router.push('/(tabs)/transactions')}>
+            <Pressable 
+              hitSlop={20}
+              onPress={() => router.push('/transactions')}
+            >
               <Text style={styles.seeAllText}>View All</Text>
             </Pressable>
           </View>
