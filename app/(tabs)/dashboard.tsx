@@ -12,7 +12,12 @@ import {
   Dimensions,
   Pressable,
   Alert,
+  Modal,
+  TextInput,
+  ActivityIndicator,
+  TouchableOpacity,
 } from 'react-native';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { 
   Send, 
@@ -29,10 +34,12 @@ import {
 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
+import { CheckCircle2, X, Wallet, User, ArrowDownLeft } from 'lucide-react-native';
 
 import { Colors, Typography, Spacing, Shadows, Gradients } from '../../src/theme';
+import { BorderRadius } from '../../src/theme';
 import { useAccountStore, useUIStore, useNotificationStore, useAuthStore } from '../../src/store';
-import { useHaptics, useTransactions, useCategorySpending } from '../../src/hooks';
+import { useHaptics, useTransactions, useCategorySpending, useNetWorth } from '../../src/hooks';
 import { DashboardHeader } from '../../src/components/layout/DashboardHeader';
 import { AccountCarousel } from '../../src/components/cards/AccountCarousel';
 import { AccountDetailWidget } from '../../src/components/layout/AccountDetailWidget';
@@ -42,6 +49,7 @@ import { WeeklyExpenseChart } from '../../src/components/charts/WeeklyExpenseCha
 import { formatCurrency } from '../../src/utils/formatters';
 import { InsightEngine, AIInsight } from '../../src/services/InsightEngine';
 import { DynamicInsightCard } from '../../src/components/ai/DynamicInsightCard';
+import { TransferService } from '../../src/services/TransferService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -73,7 +81,35 @@ export default function DashboardScreen() {
   const { trigger } = useHaptics();
   const { transactions: recentTransactions, refresh: refreshTxns } = useTransactions(3);
   const { totalSpent, refresh: refreshSpending } = useCategorySpending(7);
+  const { refresh: refreshNetWorth } = useNetWorth();
   const [insights, setInsights] = useState<AIInsight[]>([]);
+  
+  // Real-time Transaction State
+  const [transferModalVisible, setTransferModalVisible] = useState(false);
+  const [addMoneyModalVisible, setAddMoneyModalVisible] = useState(false);
+  const [transferAmount, setTransferAmount] = useState('');
+  const [transferRecipient, setTransferRecipient] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [transferSuccess, setTransferSuccess] = useState(false);
+  
+  // Scanner State
+  const [scannerVisible, setScannerVisible] = useState(false);
+  const [permission, requestPermission] = useCameraPermissions();
+
+  const handleBarCodeScanned = ({ data }: { data: string }) => {
+    if (!scannerVisible) return;
+    setScannerVisible(false);
+    trigger('success');
+    
+    // Simulate extracting merchant name from UPI URL or ID
+    const merchantName = data.includes('pa=') 
+      ? data.split('pn=')[1]?.split('&')[0]?.replace(/%20/g, ' ') || 'UPI Merchant'
+      : data;
+      
+    setTransferRecipient(merchantName);
+    setTransferAmount('');
+    setTransferModalVisible(true);
+  };
 
   useEffect(() => {
     InsightEngine.generateDailyFeed().then(newInsights => {
@@ -107,51 +143,108 @@ export default function DashboardScreen() {
     
     switch (actionId) {
       case 'send':
-        router.push('/(tabs)/transactions');
-        break;
       case 'upi':
-        Alert.alert(
-          'UPI Transfer', 
-          `Ready to send from your ${activeAccount.name}.\n\nDefault ID: achyuth@kairo\nLinked Mobile: +91 91636 00944`,
-          [{ text: 'Setup New ID', style: 'default' }, { text: 'Proceed', style: 'cancel' }]
-        );
+        setTransferRecipient('');
+        setTransferAmount('');
+        setTransferModalVisible(true);
+        break;
+      case 'add':
+        setTransferAmount('');
+        setAddMoneyModalVisible(true);
         break;
       case 'scan':
-        Alert.alert(
-          'Scan QR', 
-          'Initializing secure camera module...\n\nKairo will automatically identify the merchant and apply available rewards.',
-          [{ text: 'Open Scanner', style: 'default' }, { text: 'Cancel', style: 'cancel' }]
-        );
+        if (!permission?.granted) {
+          requestPermission();
+        } else {
+          setScannerVisible(true);
+        }
         break;
       case 'pay':
         Alert.alert(
           'Pay Bills', 
-          'Upcoming Bills:\n\n• Tata Power: ₹2,450 (Due in 3 days)\n• Airtel Fiber: ₹999 (Due in 5 days)\n• ICICI Credit: ₹18,200 (Due in 12 days)',
-          [{ text: 'Pay All', style: 'default' }, { text: 'View Details', style: 'cancel' }]
-        );
-        break;
-      case 'add':
-        Alert.alert(
-          'Add Money', 
-          `Account: ${activeAccount.name}\nNumber: 916360094425\nIFSC: KAIR0001\n\nTransfer via IMPS/NEFT to add funds instantly.`,
-          [{ text: 'Copy Details', onPress: () => trigger('success') }, { text: 'Close', style: 'cancel' }]
+          'Select a bill to pay in real-time:',
+          [
+            { text: 'Tata Power (₹2,450)', onPress: () => {
+              setTransferRecipient('Tata Power');
+              setTransferAmount('2450');
+              setTransferModalVisible(true);
+            }},
+            { text: 'Airtel (₹999)', onPress: () => {
+              setTransferRecipient('Airtel Fiber');
+              setTransferAmount('999');
+              setTransferModalVisible(true);
+            }},
+            { text: 'Cancel', style: 'cancel' }
+          ]
         );
         break;
       case 'fd':
         Alert.alert(
           'Fixed Deposits', 
-          `Current FD: ${accountDetails.fdMaturityStatus}\n\nTop Rates:\n• 1 Year: 7.20% p.a.\n• 3 Years: 7.50% p.a.\n• Senior Citizen: +0.50%`,
+          `Current FD: ${accountDetails.fdMaturityStatus}\n\nTop Rates:\n• 1 Year: 7.20% p.a.\n• 3 Years: 7.50% p.a.`,
           [{ text: 'Book New FD', style: 'default' }, { text: 'Close', style: 'cancel' }]
         );
         break;
       case 'invest':
-        router.push('/(tabs)/wealth');
+        router.push('/wealth');
         break;
       case 'analytics':
-        router.push('/(tabs)/ai');
+        router.push('/ai');
         break;
       default:
         console.log('Action pressed:', actionId);
+    }
+  };
+
+  const executeTransfer = async () => {
+    const amount = parseFloat(transferAmount);
+    if (!amount || amount <= 0 || !transferRecipient) {
+      Alert.alert('Error', 'Please enter a valid amount and recipient');
+      return;
+    }
+
+    setIsProcessing(true);
+    try {
+      await TransferService.performTransfer(amount, transferRecipient);
+      trigger('success');
+      setTransferSuccess(true);
+      setTimeout(() => {
+        setTransferModalVisible(false);
+        setTransferSuccess(false);
+        setTransferAmount('');
+        setTransferRecipient('');
+        refreshTxns();
+        refreshSpending();
+        refreshNetWorth();
+      }, 2000);
+    } catch (e: any) {
+      Alert.alert('Transfer Failed', e.message);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const executeAddMoney = async () => {
+    const amount = parseFloat(transferAmount);
+    if (!amount || amount <= 0) {
+      Alert.alert('Error', 'Please enter a valid amount');
+      return;
+    }
+
+    setIsProcessing(true);
+    try {
+      await TransferService.addFunds(amount);
+      trigger('success');
+      setAddMoneyModalVisible(false);
+      setTransferAmount('');
+      refreshTxns();
+      refreshSpending();
+      refreshNetWorth();
+      Alert.alert('Success', `₹${amount} added successfully!`);
+    } catch (e: any) {
+      Alert.alert('Error', e.message);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -357,6 +450,188 @@ export default function DashboardScreen() {
 
         <View style={styles.footerSpacer} />
       </ScrollView>
+
+      {/* QR Scanner Modal */}
+      <Modal
+        animationType="fade"
+        transparent={false}
+        visible={scannerVisible}
+        onRequestClose={() => setScannerVisible(false)}
+      >
+        <View style={styles.scannerContainer}>
+          <CameraView
+            onBarcodeScanned={handleBarCodeScanned}
+            barcodeScannerSettings={{
+              barcodeTypes: ["qr"],
+            }}
+            style={StyleSheet.absoluteFillObject}
+          />
+          
+          <SafeAreaView style={styles.scannerOverlay}>
+            <View style={styles.scannerHeader}>
+              <Pressable onPress={() => setScannerVisible(false)} style={styles.scannerCloseButton}>
+                <X size={28} color="#fff" />
+              </Pressable>
+              <Text style={styles.scannerTitle}>Scan QR Code</Text>
+              <View style={{ width: 28 }} />
+            </View>
+
+            <View style={styles.scanFrameContainer}>
+              <View style={styles.scanFrame}>
+                <View style={[styles.corner, styles.topLeft]} />
+                <View style={[styles.corner, styles.topRight]} />
+                <View style={[styles.corner, styles.bottomLeft]} />
+                <View style={[styles.corner, styles.bottomRight]} />
+              </View>
+              <Text style={styles.scanHint}>Align QR code within the frame</Text>
+            </View>
+
+            <View style={styles.scannerFooter}>
+              <TouchableOpacity 
+                style={styles.simulateScanButton}
+                onPress={() => handleBarCodeScanned({ data: 'Blue Tokai Coffee' })}
+              >
+                <QrCode size={20} color="#000" />
+                <Text style={styles.simulateScanText}>Simulate Scan</Text>
+              </TouchableOpacity>
+            </View>
+          </SafeAreaView>
+        </View>
+      </Modal>
+
+      {/* Transfer Money Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={transferModalVisible}
+        onRequestClose={() => setTransferModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <GlassCard variant="medium" style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>{transferSuccess ? 'Transfer Success' : 'Transfer Money'}</Text>
+              <Pressable onPress={() => setTransferModalVisible(false)} hitSlop={15}>
+                <X size={24} color={Colors.textTertiary} />
+              </Pressable>
+            </View>
+
+            {transferSuccess ? (
+              <View style={styles.successContainer}>
+                <CheckCircle2 size={80} color={Colors.success} strokeWidth={1.5} />
+                <Text style={styles.successAmount}>₹{transferAmount}</Text>
+                <Text style={styles.successText}>Sent to {transferRecipient}</Text>
+              </View>
+            ) : (
+              <View style={styles.modalBody}>
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Recipient Name / UPI ID</Text>
+                  <View style={styles.inputWrapper}>
+                    <User size={18} color={Colors.accentBlue} style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.textInput}
+                      placeholder="achyuth@kairo"
+                      placeholderTextColor={Colors.textMuted}
+                      value={transferRecipient}
+                      onChangeText={setTransferRecipient}
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Amount</Text>
+                  <View style={styles.inputWrapper}>
+                    <Text style={styles.currencyPrefix}>₹</Text>
+                    <TextInput
+                      style={styles.amountInput}
+                      placeholder="0.00"
+                      placeholderTextColor={Colors.textMuted}
+                      keyboardType="decimal-pad"
+                      value={transferAmount}
+                      onChangeText={setTransferAmount}
+                    />
+                  </View>
+                  <Text style={styles.balanceInfo}>
+                    Available: {formatCurrency(activeAccount.balance)}
+                  </Text>
+                </View>
+
+                <Pressable 
+                  style={[styles.confirmButton, isProcessing && styles.disabledButton]}
+                  onPress={executeTransfer}
+                  disabled={isProcessing}
+                >
+                  {isProcessing ? (
+                    <ActivityIndicator color="#000" />
+                  ) : (
+                    <>
+                      <Text style={styles.confirmButtonText}>Send Money</Text>
+                      <ArrowUpRight size={18} color="#000" />
+                    </>
+                  )}
+                </Pressable>
+              </View>
+            )}
+          </GlassCard>
+        </View>
+      </Modal>
+
+      {/* Add Money Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={addMoneyModalVisible}
+        onRequestClose={() => setAddMoneyModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <GlassCard variant="medium" style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Add Money</Text>
+              <Pressable onPress={() => setAddMoneyModalVisible(false)} hitSlop={15}>
+                <X size={24} color={Colors.textTertiary} />
+              </Pressable>
+            </View>
+
+            <View style={styles.modalBody}>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Deposit Amount</Text>
+                <View style={styles.inputWrapper}>
+                  <Text style={styles.currencyPrefix}>₹</Text>
+                  <TextInput
+                    style={styles.amountInput}
+                    placeholder="0.00"
+                    placeholderTextColor={Colors.textMuted}
+                    keyboardType="decimal-pad"
+                    value={transferAmount}
+                    onChangeText={setTransferAmount}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.depositMethods}>
+                <View style={styles.methodItem}>
+                  <Wallet size={20} color={Colors.accentCyan} />
+                  <Text style={styles.methodText}>UPI / Net Banking</Text>
+                </View>
+              </View>
+
+              <Pressable 
+                style={[styles.confirmButton, isProcessing && styles.disabledButton]}
+                onPress={executeAddMoney}
+                disabled={isProcessing}
+              >
+                {isProcessing ? (
+                  <ActivityIndicator color="#000" />
+                ) : (
+                  <>
+                    <Text style={styles.confirmButtonText}>Deposit Now</Text>
+                    <ArrowDownLeft size={18} color="#000" />
+                  </>
+                )}
+              </Pressable>
+            </View>
+          </GlassCard>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -512,6 +787,230 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
   },
   footerSpacer: {
-    height: 40,
+    height: 100,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.85)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    borderTopLeftRadius: BorderRadius['3xl'],
+    borderTopRightRadius: BorderRadius['3xl'],
+    padding: Spacing.xl,
+    paddingBottom: Spacing['4xl'],
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.xl,
+  },
+  modalTitle: {
+    fontFamily: Typography.fontFamily.bold,
+    fontSize: Typography.fontSize.lg,
+    color: Colors.textPrimary,
+  },
+  modalBody: {
+    gap: Spacing.xl,
+  },
+  inputGroup: {
+    gap: Spacing.sm,
+  },
+  inputLabel: {
+    fontFamily: Typography.fontFamily.medium,
+    fontSize: Typography.fontSize.sm,
+    color: Colors.textSecondary,
+    marginLeft: 4,
+  },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: BorderRadius.lg,
+    paddingHorizontal: Spacing.md,
+    height: 60,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  inputIcon: {
+    marginRight: Spacing.sm,
+  },
+  textInput: {
+    flex: 1,
+    fontFamily: Typography.fontFamily.medium,
+    fontSize: Typography.fontSize.base,
+    color: Colors.textPrimary,
+  },
+  currencyPrefix: {
+    fontFamily: Typography.fontFamily.bold,
+    fontSize: Typography.fontSize.xl,
+    color: Colors.accentBlue,
+    marginRight: Spacing.sm,
+  },
+  amountInput: {
+    flex: 1,
+    fontFamily: Typography.fontFamily.bold,
+    fontSize: Typography.fontSize['2xl'],
+    color: Colors.textPrimary,
+  },
+  balanceInfo: {
+    fontFamily: Typography.fontFamily.regular,
+    fontSize: Typography.fontSize.xs,
+    color: Colors.textMuted,
+    textAlign: 'right',
+    marginTop: 4,
+  },
+  confirmButton: {
+    backgroundColor: Colors.accentBlue,
+    height: 60,
+    borderRadius: BorderRadius.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    marginTop: Spacing.md,
+    shadowColor: Colors.accentBlue,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+  },
+  disabledButton: {
+    opacity: 0.5,
+  },
+  confirmButtonText: {
+    fontFamily: Typography.fontFamily.bold,
+    fontSize: Typography.fontSize.base,
+    color: '#000',
+  },
+  successContainer: {
+    alignItems: 'center',
+    paddingVertical: Spacing['3xl'],
+    gap: Spacing.md,
+  },
+  successAmount: {
+    fontFamily: Typography.fontFamily.bold,
+    fontSize: Typography.fontSize['4xl'],
+    color: Colors.textPrimary,
+    marginTop: Spacing.sm,
+  },
+  successText: {
+    fontFamily: Typography.fontFamily.medium,
+    fontSize: Typography.fontSize.base,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+  },
+  depositMethods: {
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+  },
+  methodItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  methodText: {
+    fontFamily: Typography.fontFamily.medium,
+    fontSize: Typography.fontSize.base,
+    color: Colors.textPrimary,
+  },
+  
+  // Scanner Styles
+  scannerContainer: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  scannerOverlay: {
+    flex: 1,
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(0,0,0,0.3)',
+  },
+  scannerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: Spacing.xl,
+  },
+  scannerCloseButton: {
+    padding: Spacing.xs,
+  },
+  scannerTitle: {
+    fontFamily: Typography.fontFamily.bold,
+    fontSize: Typography.fontSize.md,
+    color: '#fff',
+  },
+  scanFrameContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scanFrame: {
+    width: 250,
+    height: 250,
+    borderWidth: 0,
+    position: 'relative',
+  },
+  corner: {
+    position: 'absolute',
+    width: 30,
+    height: 30,
+    borderColor: Colors.accentCyan,
+    borderWidth: 4,
+  },
+  topLeft: {
+    top: 0,
+    left: 0,
+    borderRightWidth: 0,
+    borderBottomWidth: 0,
+  },
+  topRight: {
+    top: 0,
+    right: 0,
+    borderLeftWidth: 0,
+    borderBottomWidth: 0,
+  },
+  bottomLeft: {
+    bottom: 0,
+    left: 0,
+    borderRightWidth: 0,
+    borderTopWidth: 0,
+  },
+  bottomRight: {
+    bottom: 0,
+    right: 0,
+    borderLeftWidth: 0,
+    borderTopWidth: 0,
+  },
+  scanHint: {
+    fontFamily: Typography.fontFamily.medium,
+    fontSize: Typography.fontSize.sm,
+    color: '#fff',
+    marginTop: Spacing.xl,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.full,
+  },
+  scannerFooter: {
+    padding: Spacing['3xl'],
+    alignItems: 'center',
+  },
+  simulateScanButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.accentCyan,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.full,
+    gap: Spacing.sm,
+  },
+  simulateScanText: {
+    fontFamily: Typography.fontFamily.bold,
+    fontSize: Typography.fontSize.sm,
+    color: '#000',
   },
 });

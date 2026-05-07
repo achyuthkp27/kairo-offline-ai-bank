@@ -16,6 +16,7 @@ import {
   ScrollView,
   Pressable,
   Image,
+  Alert,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -174,7 +175,7 @@ export default function LoginScreen() {
           useNativeDriver: true,
         }),
       ]).start(() => {
-        router.replace('/(tabs)/dashboard');
+        router.replace('/dashboard');
       });
     } else {
       triggerShake();

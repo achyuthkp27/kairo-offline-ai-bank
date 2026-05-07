@@ -7,6 +7,19 @@ import * as SQLite from 'expo-sqlite';
 import { MOCK_TRANSACTIONS } from '../utils/mockData';
 import { useAccountStore } from '../store';
 
+export interface TransactionRow {
+  id: string;
+  merchantName: string;
+  category: string;
+  type: 'credit' | 'debit';
+  amount: number;
+  currency: string;
+  timestamp: number;
+  accountSource: string;
+  status: 'completed' | 'pending' | 'failed';
+  embedding?: string;
+}
+
 // Open or create the database
 let db: SQLite.SQLiteDatabase | null = null;
 
@@ -67,86 +80,51 @@ export const initDatabase = async () => {
       );
     `);
 
-    // Check if seeded
-    const accountCheck = await database.getFirstAsync<{ count: number }>(
-      'SELECT COUNT(*) as count FROM accounts'
-    );
-
+    // 1. Check & Seed Accounts
+    const accountCheck = await database.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM accounts');
     if (accountCheck && accountCheck.count === 0) {
-      console.log('Seeding initial data...');
-      await seedDatabase(database);
-    }
-    
-    console.log('Database initialized successfully');
-  } catch (error) {
-    console.error('Error initializing database:', error);
-  }
-};
-
-const seedDatabase = async (database: SQLite.SQLiteDatabase) => {
-  try {
-    // 1. Seed Accounts
-    const accounts = useAccountStore.getState().accounts;
-    for (const acc of accounts) {
-      await database.runAsync(
-        'INSERT INTO accounts (id, name, balance, type, currency, cardNetwork, cardNumber, isActive) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        [
-          acc.id,
-          acc.name,
-          acc.balance,
-          acc.type,
-          acc.currency,
-          acc.cardBrand || null,
-          acc.cardNumber || null,
-          acc.isActive ? 1 : 0
-        ]
-      );
-    }
-
-    // 2. Seed Transactions
-    // Run embedding generation asynchronously in background to not block UI
-    import('../ai/embeddingEngine').then(async ({ embeddingEngine }) => {
-      console.log('[DB] Seeding transactions...');
-      for (const txn of MOCK_TRANSACTIONS) {
-        // Create semantic string to embed
-        const semanticText = `${txn.merchantName} ${txn.category} ${txn.type}`;
-        const embedding = await embeddingEngine.generateEmbedding(semanticText);
-        
+      console.log('[DB] Seeding accounts...');
+      const accounts = useAccountStore.getState().accounts;
+      for (const acc of accounts) {
         await database.runAsync(
-          'INSERT INTO transactions (id, merchantName, category, type, amount, currency, timestamp, accountSource, status, embedding) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-          [
-            txn.id,
-            txn.merchantName,
-            txn.category,
-            txn.type,
-            txn.amount,
-            txn.currency,
-            txn.date.getTime(),
-            txn.accountSource,
-            txn.status,
-            JSON.stringify(embedding)
-          ]
+          'INSERT INTO accounts (id, name, balance, type, currency, cardNetwork, cardNumber, isActive) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+          [acc.id, acc.name, acc.balance, acc.type, acc.currency, acc.cardBrand || null, acc.cardNumber || null, acc.isActive ? 1 : 0]
         );
       }
-      console.log('[DB] Transactions seeded successfully');
-    });
-
-    // 3. Seed Portfolio Data
-    const portfolioData = [
-      { id: 'p1', label: 'Indian Equities', value: 2150000, category: 'stocks' },
-      { id: 'p2', label: 'Mutual Funds', value: 850000, category: 'funds' },
-      { id: 'p3', label: 'Fixed Deposits', value: 450000, category: 'deposits' },
-      { id: 'p4', label: 'Crypto', value: 360500, category: 'crypto' },
-    ];
-
-    for (const item of portfolioData) {
-      await database.runAsync(
-        'INSERT INTO portfolio (id, label, value, category) VALUES (?, ?, ?, ?)',
-        [item.id, item.label, item.value, item.category]
-      );
     }
 
-    console.log('Database seeded successfully');
+    // 2. Check & Seed Transactions
+    const txnCheck = await database.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM transactions');
+    if (txnCheck && txnCheck.count === 0) {
+      console.log('[DB] Seeding transactions...');
+      // Use a simpler loop without heavy embedding logic for the first boot to ensure reliability
+      for (const txn of MOCK_TRANSACTIONS) {
+        await database.runAsync(
+          'INSERT INTO transactions (id, merchantName, category, type, amount, currency, timestamp, accountSource, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          [txn.id, txn.merchantName, txn.category, txn.type, txn.amount, txn.currency, txn.date.getTime(), txn.accountSource, txn.status]
+        );
+      }
+    }
+
+    // 3. Check & Seed Portfolio
+    const portfolioCheck = await database.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM portfolio');
+    if (portfolioCheck && portfolioCheck.count === 0) {
+      console.log('[DB] Seeding portfolio...');
+      const portfolioData = [
+        { id: 'p1', label: 'Indian Equities', value: 2150000, category: 'stocks' },
+        { id: 'p2', label: 'Mutual Funds', value: 850000, category: 'funds' },
+        { id: 'p3', label: 'Fixed Deposits', value: 450000, category: 'deposits' },
+        { id: 'p4', label: 'Crypto', value: 360500, category: 'crypto' },
+      ];
+      for (const item of portfolioData) {
+        await database.runAsync(
+          'INSERT INTO portfolio (id, label, value, category) VALUES (?, ?, ?, ?)',
+          [item.id, item.label, item.value, item.category]
+        );
+      }
+    }
+
+    console.log('Database sync/seeding completed');
   } catch (error) {
     console.error('Error seeding database:', error);
   }
@@ -192,5 +170,31 @@ export const searchTransactions = async (query: string, limit: number = 5) => {
   return await database.getAllAsync(
     'SELECT * FROM transactions WHERE merchantName LIKE ? OR category LIKE ? ORDER BY timestamp DESC LIMIT ?',
     [searchTerm, searchTerm, limit]
+  );
+};
+
+export const createTransaction = async (txn: Omit<TransactionRow, 'embedding'>) => {
+  const database = await getDb();
+  await database.runAsync(
+    'INSERT INTO transactions (id, merchantName, category, type, amount, currency, timestamp, accountSource, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [
+      txn.id,
+      txn.merchantName,
+      txn.category,
+      txn.type,
+      txn.amount,
+      txn.currency || '₹',
+      txn.timestamp || Date.now(),
+      txn.accountSource,
+      txn.status || 'completed'
+    ]
+  );
+};
+
+export const updateAccountBalance = async (accountId: string, newBalance: number) => {
+  const database = await getDb();
+  await database.runAsync(
+    'UPDATE accounts SET balance = ? WHERE id = ?',
+    [newBalance, accountId]
   );
 };

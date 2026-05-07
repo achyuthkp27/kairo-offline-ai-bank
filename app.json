@@ -17,6 +17,8 @@
       "bundleIdentifier": "com.kairo.bank",
       "infoPlist": {
         "NSFaceIDUsageDescription": "Kairo uses Face ID to securely authenticate you into your banking account.",
+        "NSCameraUsageDescription": "Kairo needs camera access to scan merchant QR codes for instant payments.",
+        "NSMicrophoneUsageDescription": "Kairo needs microphone access for video-based security verification.",
         "ITSAppUsesNonExemptEncryption": false
       }
     },
@@ -43,8 +45,15 @@
           }
         }
       ],
-      "expo-secure-store"
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Kairo needs camera access to scan merchant QR codes for instant payments.",
+          "microphonePermission": "Kairo needs microphone access for video-based security verification."
+        }
+      ]
     ],
+
     "extra": {
       "router": {},
       "eas": {

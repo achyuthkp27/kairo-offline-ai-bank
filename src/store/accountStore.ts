@@ -43,6 +43,7 @@ interface AccountState {
   setActiveAccount: (index: number) => void;
   toggleBalanceVisibility: () => void;
   toggleCardFreeze: (id: string) => void;
+  updateBalance: (id: string, amount: number) => void;
 }
 
 // Premium fake account data
@@ -154,6 +155,14 @@ export const useAccountStore = create<AccountState>((set) => ({
     set((state) => ({
       accounts: state.accounts.map((acc) =>
         acc.id === id ? { ...acc, isFrozen: !acc.isFrozen } : acc
+      ),
+    }));
+  },
+
+  updateBalance: (id: string, amount: number) => {
+    set((state) => ({
+      accounts: state.accounts.map((acc) =>
+        acc.id === id ? { ...acc, balance: amount } : acc
       ),
     }));
   },
