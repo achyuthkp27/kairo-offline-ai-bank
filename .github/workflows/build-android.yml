@@ -1,0 +1,64 @@
+name: Build and Release Android APK
+
+on:
+  push:
+    branches:
+      - master
+      - main
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup Expo
+        uses: expo/expo-github-action@v8
+        with:
+          expo-version: latest
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Prebuild Android project
+        run: npx expo prebuild --platform android --clean
+
+      - name: Build Android APK
+        run: cd android && ./gradlew assembleRelease
+
+      - name: Sign APK (Optional for dev release)
+        run: |
+          # If you have keystore secrets, you would sign the APK here.
+          # For now, we will upload the unsigned/debug release.
+          mv android/app/build/outputs/apk/release/app-release.apk kairo-app.apk
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        with:
+          files: kairo-app.apk
+          name: Kairo App Android Release
+          tag_name: release-${{ github.run_number }}
+          draft: false
+          prerelease: false
