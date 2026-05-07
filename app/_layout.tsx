@@ -18,6 +18,8 @@ import {
 } from '@expo-google-fonts/inter';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Colors } from '../src/theme';
+import { initDatabase } from '../src/db/database';
+import { ErrorBoundary } from '../src/components/common/ErrorBoundary';
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
@@ -28,6 +30,16 @@ export default function RootLayout() {
     Inter_800ExtraBold,
     Inter_900Black,
   });
+
+  useEffect(() => {
+    initDatabase().then(() => {
+      setTimeout(() => {
+        import('../src/ai/llamaEngine').then(({ llamaEngine }) => {
+          llamaEngine.runAnomalyDetection();
+        });
+      }, 5000);
+    });
+  }, []);
 
   if (!fontsLoaded) {
     return (
@@ -40,23 +52,25 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={styles.container}>
-      <StatusBar style="light" />
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: Colors.background },
-          animation: 'fade',
-        }}
-      >
-        <Stack.Screen name="index" />
-        <Stack.Screen
-          name="(tabs)"
-          options={{
+      <ErrorBoundary>
+        <StatusBar style="light" />
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: Colors.background },
             animation: 'fade',
-            gestureEnabled: false,
           }}
-        />
-      </Stack>
+        >
+          <Stack.Screen name="index" />
+          <Stack.Screen
+            name="(tabs)"
+            options={{
+              animation: 'fade',
+              gestureEnabled: false,
+            }}
+          />
+        </Stack>
+      </ErrorBoundary>
     </GestureHandlerRootView>
   );
 }

@@ -10,7 +10,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { TrendingUp, PieChart, Briefcase, Landmark, Coins, ChevronRight } from 'lucide-react-native';
 
 import { Colors, Typography, Spacing, Shadows } from '../../src/theme';
-import { useHaptics } from '../../src/hooks';
+import { useHaptics, usePortfolio, useNetWorth } from '../../src/hooks';
 import { GlassCard } from '../../src/components/common/GlassCard';
 import { Sparkline } from '../../src/components/charts/Sparkline';
 import { DonutChart } from '../../src/components/charts/DonutChart';
@@ -20,18 +20,34 @@ const NET_WORTH_HISTORY = [
   3250000, 3310000, 3280000, 3450000, 3520000, 3480000, 3650000, 3810500
 ];
 
-const PORTFOLIO_DATA = [
-  { label: 'Indian Equities', value: 2150000, color: Colors.accentBlue, icon: TrendingUp },
-  { label: 'Mutual Funds', value: 850000, color: '#8B5CF6', icon: PieChart },
-  { label: 'Fixed Deposits', value: 450000, color: Colors.success, icon: Landmark },
-  { label: 'Crypto', value: 360500, color: Colors.accentCyan, icon: Coins },
-];
+const PORTFOLIO_COLORS: Record<string, string> = {
+  stocks: Colors.accentBlue,
+  funds: '#8B5CF6',
+  deposits: Colors.success,
+  crypto: Colors.accentCyan,
+};
+
+const PORTFOLIO_ICONS: Record<string, any> = {
+  stocks: TrendingUp,
+  funds: PieChart,
+  deposits: Landmark,
+  crypto: Coins,
+};
 
 export default function WealthScreen() {
   const { trigger } = useHaptics();
   const [activeTab, setActiveTab] = useState<'overview' | 'assets' | 'liabilities'>('overview');
+  const { portfolio } = usePortfolio();
+  const { netWorth } = useNetWorth();
 
-  const totalWealth = PORTFOLIO_DATA.reduce((sum, item) => sum + item.value, 0);
+  const portfolioData = portfolio.map((item) => ({
+    label: item.label,
+    value: item.value,
+    color: PORTFOLIO_COLORS[item.category] || Colors.accentBlue,
+    icon: PORTFOLIO_ICONS[item.category] || Briefcase,
+  }));
+
+  const totalWealth = portfolioData.reduce((sum, item) => sum + item.value, 0);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -110,27 +126,54 @@ export default function WealthScreen() {
           ))}
         </View>
 
-        {/* Portfolio Allocation */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Asset Allocation</Text>
-          <GlassCard variant="light" style={styles.allocationCard}>
-            <View style={styles.chartWrapper}>
-              <DonutChart 
-                data={PORTFOLIO_DATA} 
-                size={180} 
-                strokeWidth={16}
-                centerLabel="4 Assets"
-                centerSublabel="Well diversified"
-              />
-            </View>
+        {/* Tab Content */}
+        {activeTab === 'overview' ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Asset Allocation</Text>
+            <GlassCard variant="light" style={styles.allocationCard}>
+              <View style={styles.chartWrapper}>
+                <DonutChart 
+                  data={portfolioData} 
+                  size={180} 
+                  strokeWidth={16}
+                  centerLabel={`${portfolioData.length} Assets`}
+                  centerSublabel="Well diversified"
+                />
+              </View>
 
-            <View style={styles.legendContainer}>
-              {PORTFOLIO_DATA.map((item, index) => (
-                <Pressable 
-                  key={index} 
-                  style={styles.legendItem}
-                  onPress={() => trigger('light')}
-                >
+              <View style={styles.legendContainer}>
+                {portfolioData.map((item, index) => (
+                  <Pressable 
+                    key={index} 
+                    style={styles.legendItem}
+                    onPress={() => trigger('light')}
+                  >
+                    <View style={styles.legendLeft}>
+                      <View style={[styles.legendIconWrapper, { backgroundColor: `${item.color}20` }]}>
+                        <item.icon size={16} color={item.color} strokeWidth={2} />
+                      </View>
+                      <View>
+                        <Text style={styles.legendLabel}>{item.label}</Text>
+                        <Text style={styles.legendPercentage}>
+                          {((item.value / totalWealth) * 100).toFixed(1)}%
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.legendRight}>
+                      <Text style={styles.legendValue}>{formatCurrency(item.value)}</Text>
+                      <ChevronRight size={16} color={Colors.textMuted} />
+                    </View>
+                  </Pressable>
+                ))}
+              </View>
+            </GlassCard>
+          </View>
+        ) : activeTab === 'assets' ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Your Assets</Text>
+            {portfolioData.map((item, index) => (
+              <GlassCard key={index} variant="light" style={{ padding: Spacing.lg, marginBottom: Spacing.md }}>
+                <View style={styles.legendItem}>
                   <View style={styles.legendLeft}>
                     <View style={[styles.legendIconWrapper, { backgroundColor: `${item.color}20` }]}>
                       <item.icon size={16} color={item.color} strokeWidth={2} />
@@ -138,19 +181,25 @@ export default function WealthScreen() {
                     <View>
                       <Text style={styles.legendLabel}>{item.label}</Text>
                       <Text style={styles.legendPercentage}>
-                        {((item.value / totalWealth) * 100).toFixed(1)}%
+                        {((item.value / totalWealth) * 100).toFixed(1)}% of portfolio
                       </Text>
                     </View>
                   </View>
-                  <View style={styles.legendRight}>
-                    <Text style={styles.legendValue}>{formatCurrency(item.value)}</Text>
-                    <ChevronRight size={16} color={Colors.textMuted} />
-                  </View>
-                </Pressable>
-              ))}
-            </View>
-          </GlassCard>
-        </View>
+                  <Text style={styles.legendValue}>{formatCurrency(item.value)}</Text>
+                </View>
+              </GlassCard>
+            ))}
+          </View>
+        ) : (
+          <View style={styles.section}>
+            <GlassCard variant="light" style={{ padding: Spacing.xl, alignItems: 'center' as const }}>
+              <Text style={[styles.sectionTitle, { marginBottom: Spacing.sm }]}>No Liabilities</Text>
+              <Text style={styles.legendPercentage}>
+                You have no outstanding debts. Excellent financial standing.
+              </Text>
+            </GlassCard>
+          </View>
+        )}
 
         <View style={styles.footerSpacer} />
       </ScrollView>

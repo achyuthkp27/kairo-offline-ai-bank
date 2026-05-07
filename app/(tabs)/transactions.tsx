@@ -16,9 +16,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Search, Filter, ArrowUpDown } from 'lucide-react-native';
 import { Colors, Typography, Spacing, BorderRadius } from '../../src/theme';
-import { useHaptics } from '../../src/hooks';
+import { useHaptics, useTransactions } from '../../src/hooks';
 import { TransactionItem } from '../../src/components/common/TransactionItem';
-import { MOCK_TRANSACTIONS } from '../../src/utils/mockData';
 import { TransactionCategory } from '../../src/utils/types';
 
 const CATEGORIES: { label: string; value: TransactionCategory | 'all' }[] = [
@@ -35,14 +34,16 @@ export default function TransactionsScreen() {
   const [selectedCategory, setSelectedCategory] = useState<TransactionCategory | 'all'>('all');
   const [refreshing, setRefreshing] = useState(false);
   const { trigger } = useHaptics();
+  const { transactions, refresh } = useTransactions(50);
 
-  const onRefresh = React.useCallback(() => {
+  const onRefresh = React.useCallback(async () => {
     setRefreshing(true);
     trigger('medium');
-    setTimeout(() => setRefreshing(false), 1500);
-  }, [trigger]);
+    await refresh();
+    setRefreshing(false);
+  }, [trigger, refresh]);
 
-  const filteredTransactions = MOCK_TRANSACTIONS.filter((t) => {
+  const filteredTransactions = transactions.filter((t) => {
     const matchesSearch = t.merchantName.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = selectedCategory === 'all' || t.category === selectedCategory;
     return matchesSearch && matchesCategory;

@@ -15,15 +15,16 @@ import {
   Platform,
   ScrollView,
   Pressable,
+  Image,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
+import * as LocalAuthentication from 'expo-local-authentication';
 import {
   User,
   Lock,
   ScanFace,
-  Shield,
   ChevronRight,
 } from 'lucide-react-native';
 
@@ -85,6 +86,35 @@ export default function LoginScreen() {
     sequence.start();
   }, []);
 
+  // Auto-login if device is remembered
+  useEffect(() => {
+    const checkRemembered = async () => {
+      try {
+        const remembered = useAuthStore.getState().isDeviceRemembered;
+        if (remembered) {
+          setRememberDevice(true);
+          // Auto-trigger biometric auth
+          const compatible = await LocalAuthentication.hasHardwareAsync();
+          const enrolled = await LocalAuthentication.isEnrolledAsync();
+          if (compatible && enrolled) {
+            const result = await LocalAuthentication.authenticateAsync({
+              promptMessage: 'Welcome back to Kairo',
+              fallbackLabel: 'Use Password',
+              disableDeviceFallback: false,
+            });
+            if (result.success) {
+              await useAuthStore.getState().login('Achu27', 'Achu');
+              router.replace('/(tabs)/dashboard');
+            }
+          }
+        }
+      } catch (e) {
+        console.log('Auto-login check failed:', e);
+      }
+    };
+    setTimeout(checkRemembered, 1200);
+  }, []);
+
   // Shake animation for errors
   const triggerShake = useCallback(() => {
     trigger('error');
@@ -126,6 +156,11 @@ export default function LoginScreen() {
 
     if (success) {
       trigger('success');
+      if (rememberDevice) {
+        useAuthStore.getState().setDeviceRemembered(true);
+      } else {
+        useAuthStore.getState().setDeviceRemembered(false);
+      }
       // Cinematic exit animation
       Animated.parallel([
         Animated.timing(successScale, {
@@ -142,6 +177,53 @@ export default function LoginScreen() {
         router.replace('/(tabs)/dashboard');
       });
     } else {
+      triggerShake();
+    }
+  };
+
+  const handleBiometricLogin = async () => {
+    trigger('light');
+    try {
+      const compatible = await LocalAuthentication.hasHardwareAsync();
+      if (!compatible) {
+        triggerShake();
+        return;
+      }
+
+      const enrolled = await LocalAuthentication.isEnrolledAsync();
+      if (!enrolled) {
+        triggerShake();
+        return;
+      }
+
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: 'Authenticate to access Kairo',
+        fallbackLabel: 'Use Password',
+        disableDeviceFallback: false,
+      });
+
+      if (result.success) {
+        trigger('success');
+        // Remember device on biometric login
+        useAuthStore.getState().setDeviceRemembered(true);
+        await useAuthStore.getState().login('Achu27', 'Achu');
+        Animated.parallel([
+          Animated.timing(successScale, {
+            toValue: 0.95,
+            duration: 300,
+            useNativeDriver: true,
+          }),
+          Animated.timing(successOpacity, {
+            toValue: 0,
+            duration: 400,
+            useNativeDriver: true,
+          }),
+        ]).start(() => {
+          router.replace('/(tabs)/dashboard');
+        });
+      }
+    } catch (e) {
+      console.error('Biometric auth error:', e);
       triggerShake();
     }
   };
@@ -227,14 +309,11 @@ export default function LoginScreen() {
               style={[styles.logoSection, { opacity: fadeInLogo }]}
             >
               <View style={styles.logoMark}>
-                <LinearGradient
-                  colors={['#2E5BFF', '#00D4FF']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.logoGradient}
-                >
-                  <Shield size={28} color="#fff" strokeWidth={2} />
-                </LinearGradient>
+                <Image
+                  source={require('../assets/icon.png')}
+                  style={styles.logoImage}
+                  resizeMode="contain"
+                />
               </View>
               <Text style={styles.logoText}>KAIRO</Text>
               <Text style={styles.logoSubtext}>PREMIUM BANKING</Text>
@@ -352,9 +431,7 @@ export default function LoginScreen() {
                     {/* Face ID Button */}
                     <PremiumButton
                       title="Sign in with Face ID"
-                      onPress={() => {
-                        trigger('light');
-                      }}
+                      onPress={handleBiometricLogin}
                       variant="secondary"
                       icon={
                         <ScanFace
@@ -374,7 +451,7 @@ export default function LoginScreen() {
               style={[styles.footer, { opacity: fadeInFooter }]}
             >
               <View style={styles.securityBadge}>
-                <Shield size={12} color={Colors.success} strokeWidth={2} />
+                <Lock size={12} color={Colors.success} strokeWidth={2} />
                 <Text style={styles.securityText}>
                   256-bit encrypted · Secured by Kairo
                 </Text>
@@ -413,12 +490,10 @@ const styles = StyleSheet.create({
   logoMark: {
     marginBottom: Spacing.lg,
   },
-  logoGradient: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
+  logoImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 20,
   },
   logoText: {
     fontFamily: Typography.fontFamily.black,

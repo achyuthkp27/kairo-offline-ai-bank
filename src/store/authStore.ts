@@ -11,15 +11,17 @@ interface AuthState {
   isLoading: boolean;
   error: string | null;
   loginAttempts: number;
+  isDeviceRemembered: boolean;
 
   login: (userId: string, password: string) => Promise<boolean>;
   logout: () => void;
   clearError: () => void;
+  setDeviceRemembered: (value: boolean) => void;
 }
 
 // Hardcoded credentials — NO real backend auth
-const VALID_USER_ID = 'Admin_Bank';
-const VALID_PASSWORD = 'Premium_Secure';
+const VALID_USER_ID = 'Achu27';
+const VALID_PASSWORD = 'Achu';
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   isAuthenticated: false,
@@ -27,6 +29,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isLoading: false,
   error: null,
   loginAttempts: 0,
+  isDeviceRemembered: false,
 
   login: async (userId: string, password: string): Promise<boolean> => {
     set({ isLoading: true, error: null });
@@ -67,5 +70,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   clearError: () => {
     set({ error: null });
+  },
+
+  setDeviceRemembered: (value: boolean) => {
+    set({ isDeviceRemembered: value });
   },
 }));

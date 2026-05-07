@@ -24,14 +24,14 @@ import {
   TrendingUp,
   Award,
   Zap,
-  Shield,
+  Lock,
 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 
 import { Colors, Typography, Spacing, Shadows, Gradients } from '../../src/theme';
 import { useAccountStore } from '../../src/store';
-import { useHaptics } from '../../src/hooks';
+import { useHaptics, useTransactions, useCategorySpending } from '../../src/hooks';
 import { DashboardHeader } from '../../src/components/layout/DashboardHeader';
 import { AccountCarousel } from '../../src/components/cards/AccountCarousel';
 import { AccountDetailWidget } from '../../src/components/layout/AccountDetailWidget';
@@ -39,7 +39,6 @@ import { GlassCard } from '../../src/components/common/GlassCard';
 import { TransactionItem } from '../../src/components/common/TransactionItem';
 import { WeeklyExpenseChart } from '../../src/components/charts/WeeklyExpenseChart';
 import { formatCurrency } from '../../src/utils/formatters';
-import { MOCK_TRANSACTIONS } from '../../src/utils/mockData';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -65,6 +64,8 @@ export default function DashboardScreen() {
   } = useAccountStore();
   
   const { trigger } = useHaptics();
+  const { transactions: recentTransactions, refresh: refreshTxns } = useTransactions(3);
+  const { totalSpent, refresh: refreshSpending } = useCategorySpending(7);
 
   const handleAccountChange = useCallback((index: number) => {
     if (index !== activeAccountIndex) {
@@ -131,7 +132,7 @@ export default function DashboardScreen() {
             <AccountDetailWidget
               label="Credit Score"
               value={accountDetails.creditScore}
-              icon={<Shield size={14} color={Colors.success} />}
+              icon={<Lock size={14} color={Colors.success} />}
               subtitle="Excellent Standing"
               progress={82}
               color={Colors.success}
@@ -159,7 +160,7 @@ export default function DashboardScreen() {
           <GlassCard variant="medium" style={styles.analyticsCard}>
             <View style={styles.analyticsHeader}>
               <View>
-                <Text style={styles.analyticsValue}>₹1,24,500.00</Text>
+                <Text style={styles.analyticsValue}>{formatCurrency(totalSpent)}</Text>
                 <Text style={styles.analyticsSubtitle}>Total expenses this week</Text>
               </View>
               <View style={styles.trendBadge}>
@@ -228,7 +229,7 @@ export default function DashboardScreen() {
             </Pressable>
           </View>
           <GlassCard variant="light" style={styles.transactionsCard}>
-            {MOCK_TRANSACTIONS.slice(0, 3).map((item, index) => (
+            {recentTransactions.slice(0, 3).map((item, index) => (
               <React.Fragment key={item.id}>
                 <TransactionItem 
                   transaction={item} 

@@ -3,7 +3,7 @@
  * Premium bottom tab bar with custom styling
  */
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Tabs } from 'expo-router';
 import { StyleSheet, View, Platform } from 'react-native';
 import { BlurView } from 'expo-blur';
@@ -14,10 +14,34 @@ import {
   Bot,
 } from 'lucide-react-native';
 import { Colors, Typography, Spacing } from '../../src/theme';
+import { LuxeBotFAB } from '../../src/components/ai/LuxeBotFAB';
+import { AIAssistantSheet } from '../../src/components/ai/AIAssistantSheet';
+import { llamaEngine } from '../../src/ai/llamaEngine';
+import { checkModelExists } from '../../src/ai/modelManager';
 
 export default function TabLayout() {
+  const [isBotVisible, setIsBotVisible] = useState(false);
+
+  // Eagerly initialize the AI engine as soon as user reaches the dashboard
+  useEffect(() => {
+    const eagerInit = async () => {
+      try {
+        const exists = await checkModelExists();
+        if (exists) {
+          console.log('[TabLayout] Eagerly initializing AI engine...');
+          await llamaEngine.initializeModel();
+          console.log('[TabLayout] AI engine ready in background!');
+        }
+      } catch (e) {
+        console.log('[TabLayout] Eager init failed (will retry when sheet opens):', e);
+      }
+    };
+    eagerInit();
+  }, []);
+
   return (
-    <Tabs
+    <>
+      <Tabs
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: Colors.accentCyan,
@@ -73,6 +97,10 @@ export default function TabLayout() {
         }}
       />
     </Tabs>
+    
+    <LuxeBotFAB onPress={() => setIsBotVisible(true)} />
+    <AIAssistantSheet isVisible={isBotVisible} onClose={() => setIsBotVisible(false)} />
+    </>
   );
 }
 
