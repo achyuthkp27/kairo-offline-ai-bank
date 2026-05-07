@@ -45,7 +45,8 @@ export const initDatabase = async () => {
         currency TEXT DEFAULT '₹',
         timestamp INTEGER NOT NULL,
         accountSource TEXT NOT NULL,
-        status TEXT DEFAULT 'completed'
+        status TEXT DEFAULT 'completed',
+        embedding TEXT
       );
 
       CREATE TABLE IF NOT EXISTS portfolio (
@@ -53,6 +54,16 @@ export const initDatabase = async () => {
         label TEXT NOT NULL,
         value REAL NOT NULL,
         category TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS ai_memory (
+        id TEXT PRIMARY KEY,
+        key TEXT NOT NULL,
+        value TEXT NOT NULL,
+        category TEXT NOT NULL,
+        embedding TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
       );
     `);
 
@@ -93,22 +104,34 @@ const seedDatabase = async (database: SQLite.SQLiteDatabase) => {
     }
 
     // 2. Seed Transactions
-    for (const txn of MOCK_TRANSACTIONS) {
-      await database.runAsync(
-        'INSERT INTO transactions (id, merchantName, category, type, amount, currency, timestamp, accountSource, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [
-          txn.id,
-          txn.merchantName,
-          txn.category,
-          txn.type,
-          txn.amount,
-          txn.currency,
-          txn.date.getTime(),
-          txn.accountSource,
-          txn.status
-        ]
-      );
-    }
+    // Run embedding generation asynchronously in background to not block UI
+    import('../ai/embeddingEngine').then(({ embeddingEngine }) => {
+      embeddingEngine.init().then(async () => {
+        console.log('[DB] Generating semantic embeddings for transactions...');
+        for (const txn of MOCK_TRANSACTIONS) {
+          // Create semantic string to embed
+          const semanticText = `${txn.merchantName} ${txn.category} ${txn.type}`;
+          const embedding = await embeddingEngine.generateEmbedding(semanticText);
+          
+          await database.runAsync(
+            'INSERT INTO transactions (id, merchantName, category, type, amount, currency, timestamp, accountSource, status, embedding) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [
+              txn.id,
+              txn.merchantName,
+              txn.category,
+              txn.type,
+              txn.amount,
+              txn.currency,
+              txn.date.getTime(),
+              txn.accountSource,
+              txn.status,
+              JSON.stringify(embedding)
+            ]
+          );
+        }
+        console.log('[DB] Semantic embeddings seeded successfully');
+      });
+    });
 
     // 3. Seed Portfolio Data
     const portfolioData = [

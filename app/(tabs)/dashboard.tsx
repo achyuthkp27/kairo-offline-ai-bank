@@ -3,7 +3,7 @@
  * Luxurious main screen with account carousel, quick actions, and financial insights
  */
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -30,7 +30,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 
 import { Colors, Typography, Spacing, Shadows, Gradients } from '../../src/theme';
-import { useAccountStore } from '../../src/store';
+import { useAccountStore, useUIStore, useNotificationStore, useAuthStore } from '../../src/store';
 import { useHaptics, useTransactions, useCategorySpending } from '../../src/hooks';
 import { DashboardHeader } from '../../src/components/layout/DashboardHeader';
 import { AccountCarousel } from '../../src/components/cards/AccountCarousel';
@@ -39,6 +39,8 @@ import { GlassCard } from '../../src/components/common/GlassCard';
 import { TransactionItem } from '../../src/components/common/TransactionItem';
 import { WeeklyExpenseChart } from '../../src/components/charts/WeeklyExpenseChart';
 import { formatCurrency } from '../../src/utils/formatters';
+import { InsightEngine, AIInsight } from '../../src/services/InsightEngine';
+import { DynamicInsightCard } from '../../src/components/ai/DynamicInsightCard';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -63,9 +65,34 @@ export default function DashboardScreen() {
     toggleBalanceVisibility 
   } = useAccountStore();
   
+  const { setAISheetVisible, setInitialAIQuery, setNotificationSheetVisible } = useUIStore();
+  const { notifications, addNotification } = useNotificationStore();
+  const { userId } = useAuthStore();
+  const unreadCount = notifications.filter(n => !n.isRead).length;
   const { trigger } = useHaptics();
   const { transactions: recentTransactions, refresh: refreshTxns } = useTransactions(3);
   const { totalSpent, refresh: refreshSpending } = useCategorySpending(7);
+  const [insights, setInsights] = useState<AIInsight[]>([]);
+
+  useEffect(() => {
+    InsightEngine.generateDailyFeed().then(newInsights => {
+      setInsights(newInsights);
+      
+      // Auto-notify for urgent insights
+      newInsights.forEach(insight => {
+        if (insight.severity === 'alert' || insight.severity === 'warning') {
+          const alreadyNotified = notifications.some(n => n.title === insight.title && n.message === insight.description);
+          if (!alreadyNotified) {
+            addNotification({
+              title: insight.title,
+              message: insight.description,
+              type: insight.type === 'alert' ? 'security' : 'insight'
+            });
+          }
+        }
+      });
+    });
+  }, []);
 
   const handleAccountChange = useCallback((index: number) => {
     if (index !== activeAccountIndex) {
@@ -89,9 +116,17 @@ export default function DashboardScreen() {
       />
       
       <DashboardHeader 
-        userName="Achu" 
-        notificationCount={3}
-        onNotificationPress={() => trigger('light')}
+        userName={userId?.replace('27', '') || 'Guest'} 
+        notificationCount={unreadCount}
+        onNotificationPress={() => {
+          trigger('medium');
+          setNotificationSheetVisible(true);
+        }}
+        onLogout={() => {
+          trigger('heavy');
+          useAuthStore.getState().logout();
+          router.replace('/');
+        }}
       />
 
       <ScrollView
@@ -153,6 +188,27 @@ export default function DashboardScreen() {
             />
           </ScrollView>
         </View>
+
+        {/* AI Financial Insights Feed */}
+        {insights.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>AI Daily Insights</Text>
+              <Zap size={16} color={Colors.accentBlue} />
+            </View>
+            {insights.map(insight => (
+              <DynamicInsightCard 
+                key={insight.id} 
+                insight={insight} 
+                onPress={() => {
+                  trigger('medium');
+                  setInitialAIQuery(`Explain this insight: ${insight.description}`);
+                  setAISheetVisible(true);
+                }} 
+              />
+            ))}
+          </View>
+        )}
 
         {/* Spending Analytics Section */}
         <View style={styles.section}>

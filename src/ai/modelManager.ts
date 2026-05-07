@@ -19,40 +19,89 @@ export const checkModelExists = async (): Promise<boolean> => {
   }
 };
 
-export const downloadModel = async (
-  onProgress?: (progress: number) => void
-): Promise<string> => {
-  const exists = await checkModelExists();
-  if (exists) {
-    console.log('[ModelManager] Model already exists at path:', MODEL_PATH);
-    return MODEL_PATH;
-  }
+class ModelDownloadManager {
+  private downloadResumable: FileSystem.DownloadResumable | null = null;
+  private isPaused = false;
 
-  console.log('[ModelManager] Starting model download from:', MODEL_URL);
+  async startDownload(
+    onProgress?: (progress: number, totalWritten: number, totalExpected: number) => void,
+    retryCount = 3
+  ): Promise<string> {
+    const exists = await checkModelExists();
+    if (exists) return MODEL_PATH;
 
-  const downloadResumable = FileSystem.createDownloadResumable(
-    MODEL_URL,
-    MODEL_PATH,
-    {},
-    (downloadProgress) => {
-      const progress = downloadProgress.totalBytesWritten / downloadProgress.totalBytesExpectedToWrite;
-      if (onProgress) {
-        onProgress(progress);
+    this.downloadResumable = FileSystem.createDownloadResumable(
+      MODEL_URL,
+      MODEL_PATH,
+      {},
+      (downloadProgress) => {
+        const progress = downloadProgress.totalBytesWritten / downloadProgress.totalBytesExpectedToWrite;
+        if (onProgress) {
+          onProgress(progress, downloadProgress.totalBytesWritten, downloadProgress.totalBytesExpectedToWrite);
+        }
+      }
+    );
+
+    let attempts = 0;
+    while (attempts < retryCount) {
+      try {
+        console.log(`[ModelManager] Download attempt ${attempts + 1}/${retryCount}`);
+        const result = await this.downloadResumable.downloadAsync();
+        if (!result) throw new Error('Download failed, no result returned.');
+        return result.uri;
+      } catch (error) {
+        attempts++;
+        if (attempts >= retryCount) throw error;
+        console.warn(`[ModelManager] Download failed, retrying in 3s...`, error);
+        await new Promise(r => setTimeout(r, 3000));
       }
     }
-  );
-
-  try {
-    const result = await downloadResumable.downloadAsync();
-    if (!result) throw new Error('Download failed, no result returned.');
-    
-    console.log('[ModelManager] Model successfully downloaded to:', result.uri);
-    return result.uri;
-  } catch (error) {
-    console.error('[ModelManager] Error downloading model:', error);
-    throw error;
+    throw new Error('Download failed after retries');
   }
-};
+
+  async pause() {
+    if (this.downloadResumable && !this.isPaused) {
+      try {
+        await this.downloadResumable.pauseAsync();
+        this.isPaused = true;
+        console.log('[ModelManager] Download paused');
+      } catch (e) {
+        console.error('[ModelManager] Pause failed', e);
+      }
+    }
+  }
+
+  async resume() {
+    if (this.downloadResumable && this.isPaused) {
+      try {
+        await this.downloadResumable.resumeAsync();
+        this.isPaused = false;
+        console.log('[ModelManager] Download resumed');
+      } catch (e) {
+        console.error('[ModelManager] Resume failed', e);
+      }
+    }
+  }
+
+  async cancel() {
+    if (this.downloadResumable) {
+      try {
+        await this.downloadResumable.cancelAsync();
+        this.downloadResumable = null;
+        this.isPaused = false;
+        console.log('[ModelManager] Download cancelled');
+        // Clean up partial file
+        if (await checkModelExists()) {
+          await FileSystem.deleteAsync(MODEL_PATH);
+        }
+      } catch (e) {
+        console.error('[ModelManager] Cancel failed', e);
+      }
+    }
+  }
+}
+
+export const downloadManager = new ModelDownloadManager();
 
 export const deleteModel = async () => {
   try {

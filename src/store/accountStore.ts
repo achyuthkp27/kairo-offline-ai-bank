@@ -20,6 +20,7 @@ export interface Account {
   cardBrand: CardBrand;
   gradientColors: readonly [string, string, string];
   isActive: boolean;
+  isFrozen: boolean;
 }
 
 export interface AccountDetails {
@@ -41,6 +42,7 @@ interface AccountState {
 
   setActiveAccount: (index: number) => void;
   toggleBalanceVisibility: () => void;
+  toggleCardFreeze: (id: string) => void;
 }
 
 // Premium fake account data
@@ -57,6 +59,7 @@ const mockAccounts: Account[] = [
     cardBrand: 'visa',
     gradientColors: ['#1A2E3D', '#0B2948', '#061A2E'],
     isActive: true,
+    isFrozen: false,
   },
   {
     id: 'acc_002',
@@ -70,6 +73,7 @@ const mockAccounts: Account[] = [
     cardBrand: 'mastercard',
     gradientColors: ['#3D1A2E', '#2E0D1A', '#1A0811'],
     isActive: false,
+    isFrozen: false,
   },
   {
     id: 'acc_003',
@@ -83,6 +87,7 @@ const mockAccounts: Account[] = [
     cardBrand: 'visa',
     gradientColors: ['#1A3D2E', '#0D2E1A', '#081A0D'],
     isActive: false,
+    isFrozen: false,
   },
   {
     id: 'acc_004',
@@ -96,6 +101,7 @@ const mockAccounts: Account[] = [
     cardBrand: 'visa',
     gradientColors: ['#2E1A3D', '#1A0D2E', '#110820'],
     isActive: false,
+    isFrozen: false,
   },
   {
     id: 'acc_005',
@@ -109,6 +115,7 @@ const mockAccounts: Account[] = [
     cardBrand: 'mastercard',
     gradientColors: ['#3D2E1A', '#2E1A0D', '#1A1108'],
     isActive: false,
+    isFrozen: false,
   },
 ];
 
@@ -141,5 +148,13 @@ export const useAccountStore = create<AccountState>((set) => ({
 
   toggleBalanceVisibility: () => {
     set((state) => ({ isBalanceVisible: !state.isBalanceVisible }));
+  },
+
+  toggleCardFreeze: (id: string) => {
+    set((state) => ({
+      accounts: state.accounts.map((acc) =>
+        acc.id === id ? { ...acc, isFrozen: !acc.isFrozen } : acc
+      ),
+    }));
   },
 }));

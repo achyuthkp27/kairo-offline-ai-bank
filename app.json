@@ -16,7 +16,8 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.kairo.bank",
       "infoPlist": {
-        "NSFaceIDUsageDescription": "Kairo uses Face ID to securely authenticate you into your banking account."
+        "NSFaceIDUsageDescription": "Kairo uses Face ID to securely authenticate you into your banking account.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -29,6 +30,7 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "newArchEnabled": true,
     "plugins": [
       "expo-font",
       "expo-router",
@@ -42,6 +44,12 @@
         }
       ],
       "expo-secure-store"
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "dcf9d7e3-e541-4a17-b2ac-2ba667189931"
+      }
+    }
   }
 }

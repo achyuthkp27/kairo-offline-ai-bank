@@ -4,19 +4,39 @@
  */
 
 import { initLlama, LlamaContext } from 'llama.rn';
+import { NativeModules } from 'react-native';
 import { useUIStore } from '../store';
-import { fetchRecentTransactions, fetchTotalNetWorth, searchTransactions } from '../db/database';
+import { fetchRecentTransactions, fetchTotalNetWorth } from '../db/database';
+import { SemanticSearchService } from '../services/SemanticSearchService';
+import { MemoryService } from '../services/MemoryService';
+import { SubscriptionService, Subscription } from '../services/SubscriptionService';
+import { PredictionService, Prediction } from '../services/PredictionService';
 import { formatCurrency } from '../utils/formatters';
 import { MODEL_PATH, checkModelExists } from './modelManager';
 
+// Check once at module load — avoids repeated checks
+const IS_NATIVE_AVAILABLE = !!NativeModules.RNLlama;
+
+if (!IS_NATIVE_AVAILABLE) {
+  console.warn(
+    '[LlamaEngine] RNLlama native module not found. ' +
+    'AI features disabled. Run "npx expo run:ios" for the native build.'
+  );
+}
+
 export const LLAMA_CONFIG = {
-  systemPrompt: `You are Kairo, an elite private banking AI concierge for high-net-worth individuals. Be professional, concise, and authoritative. Use bullet points. No emojis or slang. Rely only on live data provided.
-If the user asks to navigate, go to a page, or view investments/transactions, you MUST append this JSON at the end of your response:
+  systemPrompt: `You are Kairo, an elite private banking AI concierge. Be professional, extremely concise, and authoritative. Keep conversational responses under 2 sentences.
+CRITICAL RULES:
+1. Rely ONLY on the live data provided in the prompt. Do NOT hallucinate account numbers, recipients, or features.
+2. If the user asks to perform a system action (transfer funds, freeze card, list recipients), DO NOT ask for their account details. Instead, output ONLY this JSON block so the app can handle it:
+\`\`\`json
+{"action": "transfer", "details": "intent"}
+\`\`\`
+3. If the user asks to navigate (go to wealth, investments, transactions, etc), output ONLY this JSON block:
 \`\`\`json
 {"action": "navigate", "details": "wealth"} 
 \`\`\`
-Valid navigation details are: "dashboard", "transactions", "wealth", "ai".
-For other actions, use format: {"action": "freeze_card", "details": "card_id"}`,
+Valid navigation details: "dashboard", "transactions", "wealth", "ai".`,
 };
 
 class LlamaEngine {
@@ -26,6 +46,14 @@ class LlamaEngine {
   private readyResolvers: (() => void)[] = [];
   private cachedNetWorth: number = 0;
   private cachedRecentTxns: any[] = [];
+  private cachedSubscriptions: Subscription[] = [];
+  private cachedPredictions: Prediction[] = [];
+  private initPromise: Promise<boolean> | null = null;
+
+  /** True if the native C++ module is available */
+  get isNativeAvailable(): boolean {
+    return IS_NATIVE_AVAILABLE;
+  }
 
   private async waitForLock() {
     while (this.isGenerating) {
@@ -62,7 +90,7 @@ class LlamaEngine {
       
       console.log(`[LlamaEngine] Full warmup completed in ${Date.now() - t0}ms`);
     } catch (e) {
-      console.log('[LlamaEngine] Warmup failed', e);
+      console.log('[LlamaEngine] Warmup failed (non-critical):', e);
     } finally {
       this.isGenerating = false;
       this.isReady = true;
@@ -78,36 +106,45 @@ class LlamaEngine {
   }
 
   async initializeModel(): Promise<boolean> {
-    const exists = await checkModelExists();
-    if (!exists) {
-      console.warn('[LlamaEngine] Model not found locally. Please download first.');
-      return false;
-    }
+    if (!IS_NATIVE_AVAILABLE) return false;
+    if (this.context) return true;
+    if (this.initPromise) return this.initPromise;
 
-    if (this.context) {
-      return true; // Already initialized
-    }
+    this.initPromise = (async () => {
+      try {
+        const exists = await checkModelExists();
+        if (!exists) {
+          console.warn('[LlamaEngine] Model not found locally. Please download first.');
+          return false;
+        }
 
-    const t0 = Date.now();
-    console.log('[LlamaEngine] Initializing native llama.cpp context...');
-    try {
-      this.context = await initLlama({
-        model: MODEL_PATH,
-        use_mlock: true,
-        n_ctx: 1024,       // Reduced from 2048 — faster init
-        n_gpu_layers: 50,
-        n_batch: 512,       // Larger batch = faster prefill
-      });
-      console.log(`[LlamaEngine] Context initialized in ${Date.now() - t0}ms`);
-      
-      // Fire warmup in background (don't await — let it run async)
-      this.warmupKVCache();
-      
-      return true;
-    } catch (error) {
-      console.error('[LlamaEngine] Failed to initialize model:', error);
-      throw error;
-    }
+        const t0 = Date.now();
+        console.log('[LlamaEngine] Initializing native llama.cpp context...');
+
+        this.context = await initLlama({
+          model: MODEL_PATH,
+          use_mlock: true,
+          n_ctx: 1024,
+          n_gpu_layers: 50,
+          n_batch: 512,
+          // Note: embeddings disabled — Qwen instruct models don't support embedding mode.
+          // Semantic search uses keyword fallback instead.
+        });
+        console.log(`[LlamaEngine] Context initialized in ${Date.now() - t0}ms`);
+        
+        // Fire warmup in background (don't await)
+        this.warmupKVCache();
+        return true;
+      } catch (error) {
+        console.error('[LlamaEngine] Failed to initialize model:', error);
+        this.context = null;
+        return false;
+      }
+    })();
+
+    const result = await this.initPromise;
+    this.initPromise = null;
+    return result;
   }
 
   // Detect simple greetings that don't need RAG
@@ -136,18 +173,28 @@ class LlamaEngine {
     const topKeywords = words.sort((a, b) => b.length - a.length).slice(0, 3);
 
     // Use pre-cached data for speed, with fresh fallback
-    const [netWorth, recentTxns, ...keywordResults] = await Promise.all([
+    const [netWorth, recentTxns, relevantMemories, subscriptions, predictions, ...keywordResults] = await Promise.all([
       this.cachedNetWorth > 0 ? Promise.resolve(this.cachedNetWorth) : fetchTotalNetWorth(),
       this.cachedRecentTxns.length > 0 ? Promise.resolve(this.cachedRecentTxns) : fetchRecentTransactions(3),
-      ...topKeywords.map(word => searchTransactions(word, 2)),
+      MemoryService.getRelevantMemories(userQuery, 3),
+      this.cachedSubscriptions.length > 0 ? Promise.resolve(this.cachedSubscriptions) : SubscriptionService.detectSubscriptions(),
+      this.cachedPredictions.length > 0 ? Promise.resolve(this.cachedPredictions) : PredictionService.generatePredictions(),
+      ...topKeywords.map(word => SemanticSearchService.searchTransactions(word, 2)),
     ]);
     
     console.log(`[LlamaEngine] Context built in ${Date.now() - t0}ms`);
     
     // Refresh cache for next query (non-blocking)
-    Promise.all([fetchTotalNetWorth(), fetchRecentTransactions(3)]).then(([nw, txns]) => {
+    Promise.all([
+      fetchTotalNetWorth(), 
+      fetchRecentTransactions(3), 
+      SubscriptionService.detectSubscriptions(),
+      PredictionService.generatePredictions()
+    ]).then(([nw, txns, subs, preds]) => {
       this.cachedNetWorth = nw;
       this.cachedRecentTxns = txns;
+      this.cachedSubscriptions = subs;
+      this.cachedPredictions = preds;
     });
 
     // Deduplicate RAG results by ID
@@ -164,6 +211,20 @@ class LlamaEngine {
     const uiContext = useUIStore.getState().appContext;
     if (uiContext) {
       prompt += `[CONTEXT]: Screen: ${uiContext}\n`;
+    }
+
+    if (relevantMemories && relevantMemories.length > 0) {
+      prompt += `[USER_MEMORY]: ${relevantMemories.map(m => m.value).join('. ')}\n`;
+    }
+
+    if (subscriptions && subscriptions.length > 0) {
+      const activeSubs = subscriptions.filter(s => s.status === 'active');
+      const totalCost = activeSubs.reduce((sum, s) => sum + s.amount, 0);
+      prompt += `[SUBSCRIPTIONS]: ${activeSubs.length} active. Total: ${formatCurrency(totalCost)}/mo. Details: ${JSON.stringify(activeSubs.map(s => ({name: s.merchantName, amount: s.amount, renews: new Date(s.nextRenewalDate).toLocaleDateString()})))}\n`;
+    }
+
+    if (predictions && predictions.length > 0) {
+      prompt += `[PREDICTIONS]: ${predictions.map(p => p.message).join(' ')}\n`;
     }
 
     if (relevantTxns.length > 0) {
@@ -185,13 +246,15 @@ class LlamaEngine {
     return prompt;
   }
 
-
-
   /**
    * Proper Native Stream generator
    */
   async *generateNativeStream(prompt: string, history: {role: 'user'|'assistant', content: string}[] = []): AsyncGenerator<string, void, unknown> {
-    if (!this.context) throw new Error('Model not initialized');
+    if (!IS_NATIVE_AVAILABLE) throw new Error('Native AI not available');
+    if (!this.context) {
+      const success = await this.initializeModel();
+      if (!success || !this.context) throw new Error('Model not initialized');
+    }
     await this.waitForLock();
     this.isGenerating = true;
     
@@ -247,14 +310,38 @@ class LlamaEngine {
       await this.context.release();
       this.context = null;
     }
-    console.log('[LlamaEngine] Model unloaded.');
+  }
+
+  /**
+   * Helper for background workers to get a complete response without streaming
+   */
+  async generateOneShot(prompt: string, n_predict: number = 64): Promise<string> {
+    if (!IS_NATIVE_AVAILABLE) return '';
+    if (!this.context) {
+      const success = await this.initializeModel();
+      if (!success || !this.context) return '';
+    }
+    await this.waitForLock();
+    this.isGenerating = true;
+    
+    try {
+      let responseText = '';
+      await new Promise((resolve, reject) => {
+        this.context?.completion(
+          { prompt, n_predict, temperature: 0.1, stop: ['<|im_end|>'] },
+          (data) => {
+            if (data.token) responseText += data.token;
+          }
+        ).then(resolve).catch(reject);
+      });
+      return responseText.trim();
+    } finally {
+      this.isGenerating = false;
+    }
   }
 
   async runAnomalyDetection() {
-    if (this.isGenerating) {
-      console.log('[LlamaEngine] Skipping anomaly detection, engine is busy.');
-      return;
-    }
+    if (!IS_NATIVE_AVAILABLE || this.isGenerating) return;
     
     this.isGenerating = true;
     try {
@@ -274,7 +361,7 @@ class LlamaEngine {
       let responseText = '';
       await new Promise((resolve, reject) => {
         this.context?.completion(
-          { prompt, n_predict: 128, temperature: 0.1, stop: ['<|im_end|>'] },
+          { prompt, n_predict: 32, temperature: 0.1, stop: ['<|im_end|>'] },
           (data) => {
             if (data.token) responseText += data.token;
           }

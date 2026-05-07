@@ -1,13 +1,16 @@
 /**
  * Kairo — useLlama Hook
- * React hook for managing chat state and streaming logic with the local AI engine
+ * React hook for managing chat state, streaming logic, and model lifecycle
  */
 
 import { useState, useCallback, useEffect } from 'react';
 import { llamaEngine } from '../ai/llamaEngine';
-import { checkModelExists, downloadModel, deleteModel } from '../ai/modelManager';
+import { checkModelExists, downloadManager } from '../ai/modelManager';
 import { useChatStore } from '../store/chatStore';
+import { MemoryWorker } from '../workers/MemoryWorker';
 import type { ChatMessage } from '../store/chatStore';
+
+import { NativeModules } from 'react-native';
 
 export type { ChatMessage } from '../store/chatStore';
 
@@ -16,68 +19,86 @@ export const useLlama = (onAction?: (action: any) => void) => {
   const [isInitializing, setIsInitializing] = useState(true);
   const [isTyping, setIsTyping] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
+  const [totalSize, setTotalSize] = useState(0);
+  const [downloadedSize, setDownloadedSize] = useState(0);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const [modelExists, setModelExists] = useState(false);
+  const [isNativeAvailable, setIsNativeAvailable] = useState(true);
 
-  // Initialize model on mount
+  // Check model status on mount
   useEffect(() => {
     let mounted = true;
 
-    const init = async () => {
-      let initialized = false;
+    const checkStatus = async () => {
+      // Strict check for native module
+      if (!NativeModules.RNLlama) {
+        if (mounted) {
+          setIsNativeAvailable(false);
+          setIsInitializing(false);
+        }
+        return;
+      }
 
-      while (!initialized && mounted) {
-        try {
-          const exists = await checkModelExists();
-          if (!exists) {
-            if (mounted) setIsDownloading(true);
-            await downloadModel((progress) => {
-              if (mounted) setDownloadProgress(progress);
-            });
-            if (mounted) setIsDownloading(false);
-          }
-          
-          // initializeModel is idempotent — if TabLayout already started it, this is instant
-          await llamaEngine.initializeModel();
-          
-          // Wait for warmup (KV cache + DB pre-cache) to finish
-          await llamaEngine.waitUntilReady();
-          
-          initialized = true;
-          
-          if (mounted) {
-            setIsInitializing(false);
-            setMessages((prev: ChatMessage[]) => {
-              if (prev.length === 0) {
-                return [
-                  {
-                    id: 'welcome',
-                    text: 'Good evening. I am Kairo, your private financial concierge. How may I assist you today?',
-                    sender: 'bot',
-                  },
-                ];
-              }
-              return prev;
-            });
-          }
-        } catch (error) {
-          console.error('Failed to initialize AI, retrying:', error);
-          if (mounted) {
-            setIsDownloading(false);
-            await deleteModel();
-            await new Promise((resolve) => setTimeout(resolve, 3000));
+      try {
+        const exists = await checkModelExists();
+        if (mounted) {
+          setModelExists(exists);
+          if (exists) {
+            await llamaEngine.initializeModel();
           }
         }
+      } catch (e) {
+        console.error('Initial engine boot failed', e);
+      } finally {
+        if (mounted) setIsInitializing(false);
       }
     };
-    init();
 
-    return () => {
-      mounted = false;
-    };
+    checkStatus();
+    return () => { mounted = false; };
   }, []);
 
+  const handleDownload = async () => {
+    setIsDownloading(true);
+    setIsPaused(false);
+    try {
+      await downloadManager.startDownload((progress, written, total) => {
+        setDownloadProgress(progress);
+        setDownloadedSize(written);
+        setTotalSize(total);
+      });
+      setModelExists(true);
+      setIsDownloading(false);
+      
+      // Auto-init after successful download
+      setIsInitializing(true);
+      await llamaEngine.initializeModel();
+      setIsInitializing(false);
+    } catch (error) {
+      console.error('Download failed:', error);
+      setIsDownloading(false);
+    }
+  };
+
+  const pauseDownload = async () => {
+    await downloadManager.pause();
+    setIsPaused(true);
+  };
+
+  const resumeDownload = async () => {
+    await downloadManager.resume();
+    setIsPaused(false);
+  };
+
+  const cancelDownload = async () => {
+    await downloadManager.cancel();
+    setIsDownloading(false);
+    setDownloadProgress(0);
+  };
+
   const sendMessage = useCallback(async (text: string) => {
-    if (!text.trim() || isTyping) return;
+    if (!text.trim() || isTyping || !modelExists || !isNativeAvailable) return;
 
     // 1. Add User Message
     const userMsg: ChatMessage = {
@@ -115,6 +136,19 @@ export const useLlama = (onAction?: (action: any) => void) => {
           )
         );
       }
+
+      // 5. Run Memory Extraction in background (non-blocking)
+      try {
+        const currentHistory = useChatStore.getState().messages;
+        MemoryWorker.extractMemories(
+          currentHistory.map(m => ({ 
+            role: m.sender === 'bot' ? 'assistant' as const : 'user' as const, 
+            content: m.text 
+          }))
+        );
+      } catch (memErr) {
+        console.warn('[useLlama] Memory extraction skipped:', memErr);
+      }
     } catch (error) {
       console.error('Inference error:', error);
       setMessages((prev) => 
@@ -124,7 +158,7 @@ export const useLlama = (onAction?: (action: any) => void) => {
             : msg
         )
       );
-     } finally {
+    } finally {
       // 4. Finalize Stream
       setMessages((prev) => 
         prev.map((msg) => {
@@ -132,7 +166,7 @@ export const useLlama = (onAction?: (action: any) => void) => {
             let finalText = msg.text;
             let actionData: any = null;
             
-            // Strip any leaked internal prompt tags from the model output
+            // Strip any leaked internal prompt tags
             finalText = finalText
               .replace(/\[USER_CONTEXT\]:?[^\n]*/gi, '')
               .replace(/\[LIVE_DATA(?:_INJECT)?\]:?[^\n]*/gi, '')
@@ -142,12 +176,10 @@ export const useLlama = (onAction?: (action: any) => void) => {
               .replace(/<\|im_end\|>/g, '')
               .trim();
             
-            // Try matching markdown JSON block first
             let actionMatch = finalText.match(/```(?:json)?\n([\s\S]*?)\n```/);
             let jsonString = actionMatch ? actionMatch[1] : null;
             let replaceRegex: RegExp = /```(?:json)?\n[\s\S]*?\n```/;
 
-            // Fallback: If no markdown block, check if it just ended with a raw JSON object containing "action"
             if (!jsonString) {
               const fallbackMatch = finalText.match(/(\{[\s\S]*"action"[\s\S]*\})/);
               if (fallbackMatch) {
@@ -160,16 +192,11 @@ export const useLlama = (onAction?: (action: any) => void) => {
               try {
                 actionData = JSON.parse(jsonString);
                 finalText = finalText.replace(replaceRegex, '').trim();
-                
-                // If the model's entire response was just the JSON block, show a fallback message
                 if (!finalText && actionData) {
-                  if (actionData.action === 'navigate') {
-                    finalText = `Taking you to ${actionData.details || 'the requested page'}...`;
-                  } else {
-                    finalText = `Executing: ${actionData.action}`;
-                  }
+                  finalText = actionData.action === 'navigate' 
+                    ? `Taking you to ${actionData.details || 'the requested page'}...`
+                    : `Executing: ${actionData.action}`;
                 }
-                
                 if (onAction && actionData) {
                    setTimeout(() => onAction(actionData), 100);
                 }
@@ -177,7 +204,6 @@ export const useLlama = (onAction?: (action: any) => void) => {
                 console.error('Failed to parse action JSON', e);
               }
             }
-            
             return { ...msg, isStreaming: false, text: finalText, action: actionData };
           }
           return msg;
@@ -185,7 +211,7 @@ export const useLlama = (onAction?: (action: any) => void) => {
       );
       setIsTyping(false);
     }
-  }, [isTyping, messages]);
+  }, [isTyping, messages, modelExists, isNativeAvailable]);
 
   return {
     messages,
@@ -193,6 +219,15 @@ export const useLlama = (onAction?: (action: any) => void) => {
     isTyping,
     isDownloading,
     downloadProgress,
+    totalSize,
+    downloadedSize,
+    isPaused,
+    modelExists,
+    isNativeAvailable,
+    handleDownload,
+    pauseDownload,
+    resumeDownload,
+    cancelDownload,
     sendMessage,
   };
 };

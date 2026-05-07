@@ -186,12 +186,14 @@ export default function LoginScreen() {
     try {
       const compatible = await LocalAuthentication.hasHardwareAsync();
       if (!compatible) {
+        Alert.alert('Biometric Not Available', 'This device does not support Face ID or Touch ID.');
         triggerShake();
         return;
       }
 
       const enrolled = await LocalAuthentication.isEnrolledAsync();
       if (!enrolled) {
+        Alert.alert('Biometric Not Set Up', 'Please enable Face ID or Touch ID in your device Settings.');
         triggerShake();
         return;
       }

@@ -18,9 +18,9 @@ concurrency:
 
 jobs:
   build-and-deploy:
+    # NOTE: Local AI (Llama) is a native-only feature and will not function in the web build.
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

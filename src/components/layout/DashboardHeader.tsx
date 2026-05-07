@@ -15,6 +15,7 @@ interface DashboardHeaderProps {
   notificationCount?: number;
   onNotificationPress?: () => void;
   onProfilePress?: () => void;
+  onLogout?: () => void;
 }
 
 export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
@@ -23,6 +24,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
   notificationCount = 0,
   onNotificationPress,
   onProfilePress,
+  onLogout,
 }) => {
   return (
     <View style={styles.container}>
@@ -58,6 +60,15 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
               <Text style={styles.badgeText}>{notificationCount > 9 ? '9+' : notificationCount}</Text>
             </View>
           )}
+        </Pressable>
+        <Pressable 
+          onPress={onLogout} 
+          style={({ pressed }) => [
+            styles.logoutButton,
+            pressed && { opacity: 0.7 }
+          ]}
+        >
+          <Text style={styles.logoutText}>Logout</Text>
         </Pressable>
       </View>
     </View>
@@ -165,5 +176,21 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
     fontSize: 8,
     fontFamily: Typography.fontFamily.black,
+  },
+  logoutButton: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 77, 109, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 77, 109, 0.2)',
+    marginLeft: Spacing.sm,
+    marginTop: 8,
+  },
+  logoutText: {
+    color: Colors.error,
+    fontSize: 10,
+    fontFamily: Typography.fontFamily.bold,
+    textTransform: 'uppercase',
   },
 });

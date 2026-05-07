@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Tabs } from 'expo-router';
-import { StyleSheet, View, Platform } from 'react-native';
+import { StyleSheet, View, Platform, NativeModules } from 'react-native';
 import { BlurView } from 'expo-blur';
 import {
   LayoutDashboard,
@@ -14,17 +14,22 @@ import {
   Bot,
 } from 'lucide-react-native';
 import { Colors, Typography, Spacing } from '../../src/theme';
+import { useUIStore } from '../../src/store';
 import { LuxeBotFAB } from '../../src/components/ai/LuxeBotFAB';
 import { AIAssistantSheet } from '../../src/components/ai/AIAssistantSheet';
+import { NotificationSheet } from '../../src/components/notifications/NotificationSheet';
 import { llamaEngine } from '../../src/ai/llamaEngine';
 import { checkModelExists } from '../../src/ai/modelManager';
 
 export default function TabLayout() {
-  const [isBotVisible, setIsBotVisible] = useState(false);
+  const { isAISheetVisible, setAISheetVisible, isNotificationSheetVisible, setNotificationSheetVisible } = useUIStore();
 
   // Eagerly initialize the AI engine as soon as user reaches the dashboard
   useEffect(() => {
     const eagerInit = async () => {
+      // Skip entirely if native module isn't available (Expo Go)
+      if (!NativeModules.RNLlama) return;
+      
       try {
         const exists = await checkModelExists();
         if (exists) {
@@ -98,8 +103,9 @@ export default function TabLayout() {
       />
     </Tabs>
     
-    <LuxeBotFAB onPress={() => setIsBotVisible(true)} />
-    <AIAssistantSheet isVisible={isBotVisible} onClose={() => setIsBotVisible(false)} />
+    <LuxeBotFAB onPress={() => setAISheetVisible(true)} />
+    <AIAssistantSheet isVisible={isAISheetVisible} onClose={() => setAISheetVisible(false)} />
+    <NotificationSheet isVisible={isNotificationSheetVisible} onClose={() => setNotificationSheetVisible(false)} />
     </>
   );
 }

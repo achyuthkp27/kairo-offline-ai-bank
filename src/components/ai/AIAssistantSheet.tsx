@@ -19,12 +19,13 @@ import {
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { useRouter } from 'expo-router';
-import { X, Send, Sparkles } from 'lucide-react-native';
+import { X, Send, Sparkles, Lock } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { Colors, Typography, Spacing } from '../../theme';
 import { useHaptics } from '../../hooks';
 import { useLlama } from '../../hooks/useLlama';
+import { useUIStore, useAccountStore, useNotificationStore } from '../../store';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -108,6 +109,7 @@ const RichText = ({ text, style, isStreaming }: { text: string; style: any; isSt
 
 export const AIAssistantSheet: React.FC<AIAssistantSheetProps> = ({ isVisible, onClose }) => {
   const { trigger } = useHaptics();
+  const { initialAIQuery, setInitialAIQuery } = useUIStore();
   const [inputText, setInputText] = useState('');
   
   const router = useRouter();
@@ -136,13 +138,11 @@ export const AIAssistantSheet: React.FC<AIAssistantSheetProps> = ({ isVisible, o
     bot: 'ai',
     chat: 'ai',
     assistant: 'ai',
-    wealth: 'wealth',
-    investments: 'wealth',
-    investment: 'wealth',
     returns: 'wealth',
-    portfolio: 'wealth',
-    stocks: 'wealth',
   };
+  
+  const { accounts, toggleCardFreeze } = useAccountStore();
+  const { addNotification } = useNotificationStore();
 
   // Use a ref so the callback never goes stale
   const onCloseRef = React.useRef(onClose);
@@ -190,12 +190,53 @@ export const AIAssistantSheet: React.FC<AIAssistantSheetProps> = ({ isVisible, o
       Alert.alert(
         'Kairo System Action',
         `Executing: ${action.action}\nDetails: ${action.details || 'N/A'}`,
-        [{ text: 'Confirm', style: 'default' }]
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { 
+            text: 'Confirm', 
+            style: 'default',
+            onPress: () => {
+              trigger('success');
+              if (action.action === 'freeze') {
+                const activeAccount = accounts.find(a => a.isActive) || accounts[0];
+                toggleCardFreeze(activeAccount.id);
+                addNotification({
+                  title: 'Security Alert',
+                  message: `Your ${activeAccount.name} card has been successfully frozen as requested.`,
+                  type: 'security'
+                });
+              } else {
+                addNotification({
+                  title: 'Action Successful',
+                  message: `Kairo has successfully initiated: ${action.action}`,
+                  type: 'system'
+                });
+              }
+              onCloseRef.current();
+            }
+          }
+        ]
       );
     }
-  }, [trigger, router]);
+  }, [trigger, router, accounts, toggleCardFreeze, addNotification]);
 
-  const { messages, isInitializing, isTyping, isDownloading, downloadProgress, sendMessage } = useLlama(handleAction);
+  const { 
+    messages, 
+    isInitializing, 
+    isTyping, 
+    isDownloading, 
+    downloadProgress, 
+    totalSize,
+    downloadedSize,
+    isPaused,
+    modelExists,
+    isNativeAvailable,
+    handleDownload,
+    pauseDownload,
+    resumeDownload,
+    cancelDownload,
+    sendMessage 
+  } = useLlama(handleAction);
   const scrollViewRef = useRef<ScrollView>(null);
   
   const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
@@ -216,6 +257,14 @@ export const AIAssistantSheet: React.FC<AIAssistantSheetProps> = ({ isVisible, o
           useNativeDriver: true,
         }),
       ]).start();
+
+      // Handle initial query if present
+      if (initialAIQuery) {
+        setTimeout(() => {
+          sendMessage(initialAIQuery);
+          setInitialAIQuery('');
+        }, 800);
+      }
     } else {
       Animated.parallel([
         Animated.timing(slideAnim, {
@@ -230,7 +279,7 @@ export const AIAssistantSheet: React.FC<AIAssistantSheetProps> = ({ isVisible, o
         }),
       ]).start();
     }
-  }, [isVisible, slideAnim, fadeAnim]);
+  }, [isVisible, slideAnim, fadeAnim, initialAIQuery, sendMessage, setInitialAIQuery]);
 
   const handleSend = async () => {
     if (!inputText.trim() || isTyping) return;
@@ -312,15 +361,64 @@ export const AIAssistantSheet: React.FC<AIAssistantSheetProps> = ({ isVisible, o
                 )}
               </View>
             ))}
+
+            {!isNativeAvailable && (
+              <View style={styles.downloadContainer}>
+                <LinearGradient
+                  colors={['rgba(255, 77, 109, 0.15)', 'rgba(255, 0, 0, 0.05)']}
+                  style={styles.downloadCard}
+                >
+                  <View style={{ marginBottom: 16 }}>
+                    <Lock size={32} color={Colors.error} />
+                  </View>
+                  <Text style={[styles.downloadTitle, { color: Colors.error }]}>Expo Go Not Supported</Text>
+                  <Text style={styles.downloadSub}>
+                    Local AI hardware acceleration is not available in Expo Go. Please run the standalone "Kairo" app build.
+                  </Text>
+                  
+                  <View style={styles.controlBtn}>
+                    <Text style={styles.controlBtnText}>Run: npx expo run:ios</Text>
+                  </View>
+                </LinearGradient>
+              </View>
+            )}
+
+            {isNativeAvailable && !modelExists && !isDownloading && (
+              <View style={styles.downloadContainer}>
+                <LinearGradient
+                  colors={['rgba(255, 255, 255, 0.05)', 'rgba(255, 255, 255, 0.02)']}
+                  style={styles.downloadCard}
+                >
+                  <View style={{ marginBottom: 16 }}>
+                    <Sparkles size={32} color={Colors.accentBlue} />
+                  </View>
+                  <Text style={styles.downloadTitle}>Neural Engine Required</Text>
+                  <Text style={styles.downloadSub}>
+                    To keep your financial data 100% private and offline, Kairo runs a 2GB AI model directly on your device.
+                  </Text>
+                  
+                  <Pressable 
+                    style={styles.primaryDownloadBtn}
+                    onPress={() => { trigger('light'); handleDownload(); }}
+                  >
+                    <Text style={styles.primaryDownloadBtnText}>Download Engine (2.0 GB)</Text>
+                  </Pressable>
+                  
+                  <Text style={styles.storageHint}>Ensure you are on Wi-Fi. This will be stored locally.</Text>
+                </LinearGradient>
+              </View>
+            )}
+
             {isDownloading && (
               <View style={styles.downloadContainer}>
                 <LinearGradient
                   colors={['rgba(46, 91, 255, 0.15)', 'rgba(0, 212, 255, 0.05)']}
                   style={styles.downloadCard}
                 >
-                  <Sparkles size={24} color={Colors.accentCyan} style={{ marginBottom: 12 }} />
-                  <Text style={styles.downloadTitle}>Downloading Neural Engine</Text>
-                  <Text style={styles.downloadSub}>Initial setup of the 2GB on-device AI model.</Text>
+                  <View style={styles.downloadHeaderRow}>
+                    <Sparkles size={24} color={Colors.accentCyan} />
+                    <Text style={styles.downloadTitleSmall}>Installing Kairo AI</Text>
+                  </View>
                   
                   <View style={styles.progressBarBg}>
                     <Animated.View style={[styles.progressBarFill, { width: `${Math.max(downloadProgress * 100, 5)}%` }]} />
@@ -328,13 +426,34 @@ export const AIAssistantSheet: React.FC<AIAssistantSheetProps> = ({ isVisible, o
                   
                   <View style={styles.downloadFooter}>
                     <Text style={styles.progressText}>{Math.round(downloadProgress * 100)}%</Text>
-                    <Text style={styles.progressTextBytes}>{(downloadProgress * 2.0).toFixed(1)} GB / 2.0 GB</Text>
+                    <Text style={styles.progressTextBytes}>
+                      {(downloadedSize / (1024 * 1024 * 1024)).toFixed(1)} GB / {(totalSize / (1024 * 1024 * 1024)).toFixed(1)} GB
+                    </Text>
+                  </View>
+
+                  <View style={styles.downloadControls}>
+                    {isPaused ? (
+                      <Pressable style={styles.controlBtn} onPress={resumeDownload}>
+                        <Text style={styles.controlBtnText}>Resume</Text>
+                      </Pressable>
+                    ) : (
+                      <Pressable style={styles.controlBtn} onPress={pauseDownload}>
+                        <Text style={styles.controlBtnText}>Pause</Text>
+                      </Pressable>
+                    )}
+                    <Pressable style={[styles.controlBtn, styles.cancelBtn]} onPress={cancelDownload}>
+                      <Text style={[styles.controlBtnText, { color: Colors.error }]}>Cancel</Text>
+                    </Pressable>
                   </View>
                 </LinearGradient>
               </View>
             )}
-            {isInitializing && !isDownloading && (
-              <Text style={styles.loadingText}>Kairo is initializing...</Text>
+
+            {isInitializing && modelExists && !isDownloading && (
+              <View style={styles.initializingContainer}>
+                <TypingIndicator />
+                <Text style={styles.loadingText}>Awakening Neural Engine...</Text>
+              </View>
             )}
           </ScrollView>
 
@@ -369,13 +488,17 @@ export const AIAssistantSheet: React.FC<AIAssistantSheetProps> = ({ isVisible, o
               placeholderTextColor={Colors.textMuted}
               value={inputText}
               onChangeText={setInputText}
-              multiline
+              multiline={false}
+              onSubmitEditing={handleSend}
+              returnKeyType="send"
+              blurOnSubmit={false}
               maxLength={200}
+              editable={modelExists && !isDownloading}
             />
             <Pressable 
-              style={[styles.sendButton, (!inputText.trim() || isTyping) && styles.sendButtonDisabled]}
+              style={[styles.sendButton, (!inputText.trim() || isTyping || !modelExists) && styles.sendButtonDisabled]}
               onPress={handleSend}
-              disabled={!inputText.trim() || isTyping}
+              disabled={!inputText.trim() || isTyping || !modelExists}
             >
               <Send size={18} color={inputText.trim() && !isTyping ? Colors.background : Colors.textMuted} />
             </Pressable>
@@ -603,5 +726,63 @@ const styles = StyleSheet.create({
     fontFamily: Typography.fontFamily.medium,
     fontSize: Typography.fontSize.xs,
     color: Colors.textMuted,
+  },
+  downloadHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: Spacing.xl,
+    width: '100%',
+  },
+  downloadTitleSmall: {
+    fontFamily: Typography.fontFamily.bold,
+    fontSize: Typography.fontSize.md,
+    color: Colors.textPrimary,
+    marginLeft: Spacing.sm,
+  },
+  primaryDownloadBtn: {
+    backgroundColor: Colors.accentBlue,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.md,
+    borderRadius: 16,
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: Spacing.md,
+  },
+  primaryDownloadBtnText: {
+    fontFamily: Typography.fontFamily.bold,
+    fontSize: Typography.fontSize.base,
+    color: Colors.background,
+  },
+  storageHint: {
+    fontFamily: Typography.fontFamily.regular,
+    fontSize: 11,
+    color: Colors.textMuted,
+    textAlign: 'center',
+  },
+  downloadControls: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: Spacing.xl,
+    gap: Spacing.md,
+  },
+  controlBtn: {
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  controlBtnText: {
+    fontFamily: Typography.fontFamily.bold,
+    fontSize: Typography.fontSize.sm,
+    color: Colors.textPrimary,
+  },
+  cancelBtn: {
+    borderColor: 'rgba(255, 77, 109, 0.2)',
+  },
+  initializingContainer: {
+    alignItems: 'center',
+    marginTop: Spacing.xl,
   },
 });
