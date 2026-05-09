@@ -9,6 +9,7 @@ interface UIState {
   initialAIQuery: string;
   isOnline: boolean;
   themeMode: ThemeMode;
+  cancelledSubscriptionIds: string[];
   setAppContext: (context: string) => void;
   setAISheetVisible: (visible: boolean) => void;
   setNotificationSheetVisible: (visible: boolean) => void;
@@ -16,6 +17,7 @@ interface UIState {
   setOnline: (online: boolean) => void;
   setThemeMode: (mode: ThemeMode) => void;
   toggleTheme: () => void;
+  cancelSubscription: (id: string) => void;
 }
 
 export const useUIStore = create<UIState>((set, get) => ({
@@ -25,6 +27,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   initialAIQuery: '',
   isOnline: true,
   themeMode: 'dark',
+  cancelledSubscriptionIds: [],
   setAppContext: (appContext) => set({ appContext }),
   setAISheetVisible: (isAISheetVisible) => set({ isAISheetVisible }),
   setNotificationSheetVisible: (isNotificationSheetVisible) => set({ isNotificationSheetVisible }),
@@ -32,4 +35,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   setOnline: (isOnline) => set({ isOnline }),
   setThemeMode: (themeMode) => set({ themeMode }),
   toggleTheme: () => set({ themeMode: get().themeMode === 'dark' ? 'light' : 'dark' }),
+  cancelSubscription: (id) => set((state) => ({ 
+    cancelledSubscriptionIds: [...state.cancelledSubscriptionIds, id] 
+  })),
 }));

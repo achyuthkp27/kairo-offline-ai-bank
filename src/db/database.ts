@@ -186,9 +186,11 @@ export const initDatabase = async () => {
 
     // 2. Check & Seed Transactions
     const txnCheck = await database.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM transactions');
-    if (txnCheck && txnCheck.count === 0) {
-      logger.info('Seeding transactions...');
-      // Use a simpler loop without heavy embedding logic for the first boot to ensure reliability
+    if (txnCheck && txnCheck.count < MOCK_TRANSACTIONS.length) {
+      logger.info('Re-seeding transactions (count was ' + txnCheck.count + ')...');
+      // Clear existing to avoid duplicates if count was low but not zero
+      await database.runAsync('DELETE FROM transactions');
+      
       for (const txn of MOCK_TRANSACTIONS) {
         await database.runAsync(
           'INSERT INTO transactions (id, merchantName, category, type, amount, currency, timestamp, accountSource, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
@@ -252,6 +254,66 @@ export const initDatabase = async () => {
         await database.runAsync(
           'INSERT INTO budgets (id, category, limit_amount, spent_amount, month, year, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
           [bgt.id, bgt.category, bgt.limit, 0, currentMonth, currentYear, now, now]
+        );
+      }
+    }
+
+    // 6. Seed AI Memory
+    const memoryCheck = await database.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM ai_memory');
+    if (memoryCheck && memoryCheck.count === 0) {
+      logger.info('Seeding AI memory...');
+      const now = Date.now();
+      const defaultMemories = [
+        { id: 'mem_1', key: 'user_preference', value: 'Prefers dark mode for better focus', category: 'preference' },
+        { id: 'mem_2', key: 'user_behavior', value: 'Usually orders from Swiggy on weekends', category: 'behavior' },
+        { id: 'mem_3', key: 'financial_insight', value: 'Monthly savings rate is consistently above 30%', category: 'insight' },
+        { id: 'mem_4', key: 'user_persona', value: 'Early tech adopter with focus on efficiency', category: 'persona' },
+      ];
+      for (const mem of defaultMemories) {
+        await database.runAsync(
+          'INSERT INTO ai_memory (id, key, value, category, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+          [mem.id, mem.key, mem.value, mem.category, now, now]
+        );
+      }
+    }
+
+    // 7. Seed Savings Goals
+    const goalsCheck = await database.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM savings_goals');
+    if (goalsCheck && goalsCheck.count === 0) {
+      logger.info('Seeding savings goals...');
+      const now = Date.now();
+      const defaultGoals = [
+        { id: 'goal_1', name: 'MacBook Pro M4', target: 250000, current: 85000, category: 'electronics', monthly: 15000 },
+        { id: 'goal_2', name: 'Japan Trip', target: 400000, current: 120000, category: 'travel', monthly: 20000 },
+        { id: 'goal_3', name: 'Emergency Fund', target: 600000, current: 450000, category: 'savings', monthly: 10000 },
+      ];
+      for (const goal of defaultGoals) {
+        const deadline = now + (365 * 24 * 60 * 60 * 1000); // 1 year from now
+        await database.runAsync(
+          'INSERT INTO savings_goals (id, name, targetAmount, currentAmount, deadline, category, monthlyContribution, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          [goal.id, goal.name, goal.target, goal.current, deadline, goal.category, goal.monthly, now, now]
+        );
+      }
+    }
+
+    // 8. Seed Bills
+    const billsCheck = await database.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM bills');
+    if (billsCheck && billsCheck.count === 0) {
+      logger.info('Seeding bills...');
+      const now = Date.now();
+      const defaultBills = [
+        { id: 'bill_1', name: 'Rent', amount: 45000, category: 'housing', day: 1 },
+        { id: 'bill_2', name: 'Electricity', amount: 3500, category: 'utilities', day: 15 },
+        { id: 'bill_3', name: 'Gym Membership', amount: 2500, category: 'health', day: 5 },
+      ];
+      for (const bill of defaultBills) {
+        const dueDate = new Date();
+        dueDate.setDate(bill.day);
+        if (dueDate.getTime() < now) dueDate.setMonth(dueDate.getMonth() + 1);
+        
+        await database.runAsync(
+          'INSERT INTO bills (id, name, amount, dueDate, category, isRecurring, recurMonthDays, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          [bill.id, bill.name, bill.amount, dueDate.getTime(), bill.category, 1, String(bill.day), now, now]
         );
       }
     }

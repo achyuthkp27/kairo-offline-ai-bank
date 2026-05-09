@@ -62,13 +62,13 @@ export const LuxeBotFAB: React.FC<LuxeBotFABProps> = ({ onPress, isSheetVisible 
   const styles = useMemo(() => StyleSheet.create({
     container: {
       position: 'absolute',
-      bottom: 20,
+      bottom: 100,
       right: 20,
       width: 60,
       height: 60,
       justifyContent: 'center',
       alignItems: 'center',
-      zIndex: 100,
+      zIndex: 9999,
     },
     fab: {
       width: 56,

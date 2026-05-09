@@ -35,15 +35,20 @@ import { AnimatedOrb } from '../src/components/common/AnimatedOrb';
 import { GlassCard } from '../src/components/common/GlassCard';
 import { PremiumInput } from '../src/components/inputs/PremiumInput';
 import { PremiumButton } from '../src/components/buttons/PremiumButton';
+import { OnboardingFlow } from '../src/components/onboarding/OnboardingFlow';
 import { Typography, Spacing, Gradients } from '../src/theme';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const ONBOARDING_COMPLETE_KEY = '@kairo_onboarding_complete';
 
 export default function LoginScreen() {
   const [userId, setUserId] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [rememberDevice, setRememberDevice] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [isNewUser, setIsNewUser] = useState(false);
 
   const { login, register, isLoading, error, clearError, isFirstLaunch, isCheckingFirstLaunch, checkFirstLaunch, biometricLogin, setRememberedDevice, isDeviceRemembered } = useAuthStore();
   const { trigger } = useHaptics();
@@ -237,6 +242,32 @@ export default function LoginScreen() {
     checkFirstLaunch();
   }, []);
 
+  // Check if onboarding is needed
+  useEffect(() => {
+    const checkOnboarding = async () => {
+      try {
+        const completed = await AsyncStorage.getItem(ONBOARDING_COMPLETE_KEY);
+        if (isFirstLaunch && !completed) {
+          setShowOnboarding(true);
+          setIsNewUser(true);
+        }
+      } catch (e) {
+        console.log('Onboarding check failed:', e);
+      }
+    };
+    if (!isCheckingFirstLaunch) {
+      checkOnboarding();
+    }
+  }, [isFirstLaunch, isCheckingFirstLaunch]);
+
+  const handleOnboardingComplete = async () => {
+    try {
+      await AsyncStorage.setItem(ONBOARDING_COMPLETE_KEY, 'true');
+    } catch (e) {
+      console.log('Failed to save onboarding state');
+    }
+  };
+
   // Auto-login if device is remembered
   useEffect(() => {
     if (isCheckingFirstLaunch) return;
@@ -396,6 +427,10 @@ export default function LoginScreen() {
     inputRange: [0, 1],
     outputRange: ['rgba(255, 255, 255, 0.08)', 'rgba(255, 77, 109, 0.60)'],
   });
+
+  if (showOnboarding && isNewUser) {
+    return <OnboardingFlow onComplete={handleOnboardingComplete} />;
+  }
 
   return (
     <View style={styles.container}>

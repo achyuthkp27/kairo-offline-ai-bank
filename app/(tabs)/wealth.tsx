@@ -15,6 +15,9 @@ import { useThemeColors } from '../../src/hooks/useTheme';
 import { GlassCard } from '../../src/components/common/GlassCard';
 import { Sparkline } from '../../src/components/charts/Sparkline';
 import { DonutChart } from '../../src/components/charts/DonutChart';
+import { RotatablePieChart } from '../../src/components/charts/RotatablePieChart';
+import { WealthTimeline, MOCK_TIMELINE_DATA } from '../../src/components/charts/WealthTimeline';
+import { SpendingHeatmap } from '../../src/components/charts/SpendingHeatmap';
 import { formatCurrency } from '../../src/utils/formatters';
 import { withErrorBoundary } from '../../src/components/common/ErrorBoundary';
 
@@ -320,41 +323,34 @@ function WealthScreen() {
             <Text style={styles.sectionTitle}>Asset Allocation</Text>
             <GlassCard variant="light" style={styles.allocationCard}>
               <View style={styles.chartWrapper}>
-                <DonutChart 
+                <RotatablePieChart 
                   data={portfolioData} 
-                  size={180} 
-                  strokeWidth={16}
-                  centerLabel={`${portfolioData.length} Assets`}
-                  centerSublabel="Well diversified"
+                  size={200}
                 />
               </View>
-
-              <View style={styles.legendContainer}>
-                {portfolioData.map((item, index) => (
-                  <Pressable 
-                    key={index} 
-                    style={styles.legendItem}
-                    onPress={() => trigger('light')}
-                  >
-                    <View style={styles.legendLeft}>
-                      <View style={[styles.legendIconWrapper, { backgroundColor: item.color + '20' }]}>
-                        <item.icon size={16} color={item.color} strokeWidth={2} />
-                      </View>
-                      <View>
-                        <Text style={styles.legendLabel}>{item.label}</Text>
-                        <Text style={styles.legendPercentage}>
-                          {((item.value / totalWealth) * 100).toFixed(1)}%
-                        </Text>
-                      </View>
-                    </View>
-                    <View style={styles.legendRight}>
-                      <Text style={styles.legendValue}>{formatCurrency(item.value)}</Text>
-                      <ChevronRight size={16} color={Colors.textMuted} />
-                    </View>
-                  </Pressable>
-                ))}
-              </View>
             </GlassCard>
+
+            {/* Wealth Timeline */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Wealth Growth</Text>
+              <GlassCard variant="light" style={{ padding: Spacing.md }}>
+                <WealthTimeline 
+                  data={MOCK_TIMELINE_DATA}
+                  currentMonth={1}
+                />
+              </GlassCard>
+            </View>
+
+            {/* Spending Heatmap */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Spending Patterns</Text>
+              <GlassCard variant="light" style={{ padding: Spacing.sm }}>
+                <SpendingHeatmap 
+                  month={new Date().getMonth()}
+                  year={new Date().getFullYear()}
+                />
+              </GlassCard>
+            </View>
           </View>
         ) : activeTab === 'assets' ? (
           <View style={styles.section}>

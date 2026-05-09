@@ -48,6 +48,9 @@ export const createDashboardStyles = (Colors: DashboardColors) =>
       color: Colors.textPrimary,
       marginBottom: Spacing.md,
     },
+    healthScoreContainer: {
+      alignItems: 'center',
+    },
     seeAllText: {
       fontFamily: Typography.fontFamily.medium,
       fontSize: Typography.fontSize.sm,

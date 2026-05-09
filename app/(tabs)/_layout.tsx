@@ -3,21 +3,22 @@
  * Premium bottom tab bar with custom styling
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { Tabs } from 'expo-router';
-import { StyleSheet, View, Platform, NativeModules, Text } from 'react-native';
+import { StyleSheet, View, Platform, NativeModules, Text, Pressable, Animated } from 'react-native';
 import { BlurView } from 'expo-blur';
 import {
   LayoutDashboard,
   ArrowLeftRight,
   TrendingUp,
-  Bot,
   WifiOff,
+  Sparkles,
 } from 'lucide-react-native';
-import { Typography, Spacing, BorderRadius } from '../../src/theme';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useHaptics } from '../../src/hooks';
+import { Typography, Spacing } from '../../src/theme';
 import { useUIStore } from '../../src/store';
 import { useThemeColors } from '../../src/hooks/useTheme';
-import { LuxeBotFAB } from '../../src/components/ai/LuxeBotFAB';
 import { AIAssistantSheet } from '../../src/components/ai/AIAssistantSheet';
 import { NotificationSheet } from '../../src/components/notifications/NotificationSheet';
 import { llamaEngine } from '../../src/ai/llamaEngine';
@@ -26,9 +27,9 @@ import { checkModelExists } from '../../src/ai/modelManager';
 function OfflineIndicator() {
   const isOnline = useUIStore((state) => state.isOnline);
   const { Colors } = useThemeColors();
-  
+
   if (isOnline) return null;
-  
+
   return (
     <View style={{
       position: 'absolute', top: 0, left: 0, right: 0,
@@ -43,16 +44,86 @@ function OfflineIndicator() {
   );
 }
 
+const AIFabButton = ({ onPress, Colors }: { onPress: () => void; Colors: any }) => {
+  const pulseAnim = React.useRef(new Animated.Value(1)).current;
+  const glowAnim = React.useRef(new Animated.Value(0.3)).current;
+
+  React.useEffect(() => {
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.parallel([
+          Animated.timing(pulseAnim, { toValue: 1.08, duration: 1800, useNativeDriver: true }),
+          Animated.timing(glowAnim, { toValue: 0.55, duration: 1800, useNativeDriver: true }),
+        ]),
+        Animated.parallel([
+          Animated.timing(pulseAnim, { toValue: 1, duration: 1800, useNativeDriver: true }),
+          Animated.timing(glowAnim, { toValue: 0.18, duration: 1800, useNativeDriver: true }),
+        ]),
+      ])
+    );
+    pulse.start();
+    return () => pulse.stop();
+  }, [pulseAnim, glowAnim]);
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={{
+        position: 'absolute',
+        bottom: 15,
+        right: 20,
+        width: 82,
+        height: 82,
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 100,
+      }}
+    >
+      <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+        <Animated.View
+          style={{
+            position: 'absolute',
+            width: 78,
+            height: 78,
+            borderRadius: 39,
+            backgroundColor: Colors.accentBlue,
+            transform: [{ scale: pulseAnim }],
+            opacity: glowAnim,
+          }}
+        />
+        <LinearGradient
+          colors={['#2E5BFF', '#00D4FF']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{
+            width: 60,
+            height: 60,
+            borderRadius: 35,
+            justifyContent: 'center',
+            alignItems: 'center',
+            paddingRight: 8,
+            shadowColor: '#2E5BFF',
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.25,
+            shadowRadius: 10,
+            elevation: 8,
+          }}
+        >
+          <Sparkles size={23} color="#FFFFFF" strokeWidth={2} style={{ marginLeft: -15 }} />
+        </LinearGradient>
+      </View>
+    </Pressable>
+  );
+};
+
 export default function TabLayout() {
   const { isAISheetVisible, setAISheetVisible, isNotificationSheetVisible, setNotificationSheetVisible } = useUIStore();
   const { Colors, isDark } = useThemeColors();
+  const { trigger } = useHaptics();
 
-  // Eagerly initialize the AI engine as soon as user reaches the dashboard
   useEffect(() => {
     const eagerInit = async () => {
-      // Skip entirely if native module isn't available (Expo Go)
       if (!NativeModules.RNLlama) return;
-      
       try {
         const exists = await checkModelExists();
         if (exists) {
@@ -61,7 +132,7 @@ export default function TabLayout() {
           console.log('[TabLayout] AI engine ready in background!');
         }
       } catch (e) {
-        console.log('[TabLayout] Eager init failed (will retry when sheet opens):', e);
+        console.log('[TabLayout] Eager init failed:', e);
       }
     };
     eagerInit();
@@ -69,6 +140,11 @@ export default function TabLayout() {
 
   const tabBarColor = isDark ? 'rgba(10, 10, 10, 0.85)' : 'rgba(245, 245, 247, 0.85)';
   const tabBarBorder = isDark ? Colors.divider : 'rgba(0, 0, 0, 0.1)';
+
+  const handleAIPress = () => {
+    trigger('light');
+    setAISheetVisible(true);
+  };
 
   return (
     <>
@@ -114,18 +190,9 @@ export default function TabLayout() {
           ),
         }}
       />
-      <Tabs.Screen
-        name="ai"
-        options={{
-          title: 'Luxe-Bot',
-          tabBarIcon: ({ color, size }) => (
-            <Bot size={size - 2} color={color} strokeWidth={1.8} />
-          ),
-        }}
-      />
     </Tabs>
-    
-    <LuxeBotFAB onPress={() => setAISheetVisible(true)} isSheetVisible={isAISheetVisible} />
+
+    <AIFabButton onPress={handleAIPress} Colors={Colors} />
     <AIAssistantSheet isVisible={isAISheetVisible} onClose={() => setAISheetVisible(false)} />
     <NotificationSheet isVisible={isNotificationSheetVisible} onClose={() => setNotificationSheetVisible(false)} />
     <OfflineIndicator />

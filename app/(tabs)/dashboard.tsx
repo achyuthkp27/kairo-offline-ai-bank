@@ -26,6 +26,7 @@ import {
   Award,
   Zap,
   Lock,
+  RefreshCw,
 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
@@ -51,12 +52,16 @@ import { GlassCard } from '../../src/components/common/GlassCard';
 import { TransactionItem } from '../../src/components/common/TransactionItem';
 import { SwipeToPay } from '../../src/components/common/SwipeToPay';
 import { CustomRefreshControl } from '../../src/components/common/CustomRefreshControl';
+import { FinancialHealthScore } from '../../src/components/gamification/FinancialHealthScore';
+import { SavingsStreak } from '../../src/components/gamification/SavingsStreak';
+import { AchievementBadges, MOCK_ACHIEVEMENTS } from '../../src/components/gamification/AchievementBadges';
 import { WeeklyExpenseChart } from '../../src/components/charts/WeeklyExpenseChart';
 import { formatCurrency } from '../../src/utils/formatters';
 import { DynamicInsightCard } from '../../src/components/ai/DynamicInsightCard';
 import { NotificationSettings } from '../../src/components/notifications/NotificationSettings';
 import { getDashboardGradientColors, getQuickActions } from '../../src/components/dashboard/constants';
 import { createDashboardStyles } from '../../src/components/dashboard/styles';
+import { Spacing } from '../../src/theme';
 
 export default function DashboardScreen() {
   const { 
@@ -345,6 +350,27 @@ export default function DashboardScreen() {
                 {index < 2 && <View style={styles.itemSeparator} />}
               </React.Fragment>
             ))}
+          </GlassCard>
+        </View>
+
+        {/* Financial Health Score */}
+        <View style={styles.section}>
+          <GlassCard variant="light">
+            <FinancialHealthScore score={78} size={140} />
+          </GlassCard>
+        </View>
+
+        {/* Savings Streak */}
+        <View style={styles.section}>
+          <GlassCard variant="light">
+            <SavingsStreak currentStreak={5} bestStreak={12} />
+          </GlassCard>
+        </View>
+
+        {/* Achievements */}
+        <View style={styles.section}>
+          <GlassCard variant="light">
+            <AchievementBadges achievements={MOCK_ACHIEVEMENTS} />
           </GlassCard>
         </View>
 

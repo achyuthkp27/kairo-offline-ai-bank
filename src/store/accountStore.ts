@@ -40,6 +40,7 @@ interface AccountState {
   isBalanceVisible: boolean;
   accountDetails: AccountDetails;
 
+  setAccounts: (accounts: Account[]) => void;
   setActiveAccount: (index: number) => void;
   toggleBalanceVisibility: () => void;
   toggleCardFreeze: (id: string) => void;
@@ -136,6 +137,10 @@ export const useAccountStore = create<AccountState>((set) => ({
   activeAccountIndex: 0,
   isBalanceVisible: true,
   accountDetails: mockDetails,
+
+  setAccounts: (accounts: Account[]) => {
+    set({ accounts });
+  },
 
   setActiveAccount: (index: number) => {
     set((state) => {

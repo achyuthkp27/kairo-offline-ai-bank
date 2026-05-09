@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, Platform, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { RefreshCw, Brain, Sparkles } from 'lucide-react-native';
@@ -11,9 +11,11 @@ import { MemoryManager } from '../../src/components/ai/MemoryManager';
 import { SubscriptionCard } from '../../src/components/ai/SubscriptionCard';
 import { formatCurrency } from '../../src/utils/formatters';
 import { withErrorBoundary } from '../../src/components/common/ErrorBoundary';
+import { useHaptics } from '../../src/hooks';
 
 function AIScreen() {
   const { Colors, isDark } = useThemeColors();
+  const { trigger } = useHaptics();
   const [activeTab, setActiveTab] = useState<'subscriptions' | 'memory'>('subscriptions');
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [totalMonthly, setTotalMonthly] = useState(0);
@@ -22,11 +24,37 @@ function AIScreen() {
     if (activeTab === 'subscriptions') {
       SubscriptionService.detectSubscriptions().then(subs => {
         setSubscriptions(subs);
-        const total = subs.reduce((sum, s) => sum + (s.frequency === 'monthly' ? s.amount : s.amount / 12), 0);
-        setTotalMonthly(total);
       });
     }
   }, [activeTab]);
+
+  useEffect(() => {
+    const total = subscriptions.reduce((sum, s) => sum + (s.frequency === 'monthly' ? s.amount : s.amount / 12), 0);
+    setTotalMonthly(total);
+  }, [subscriptions]);
+
+  const handleSimulateCancel = (sub: Subscription) => {
+    trigger('success');
+    Alert.alert(
+      'Simulation Success',
+      `You have simulated the cancellation of ${sub.merchantName}. This saves you ${formatCurrency(sub.amount)} per month.`,
+      [
+        {
+          text: 'Undo',
+          style: 'cancel',
+          onPress: () => {
+            // In a real app, we'd fetch again or keep a history
+          }
+        },
+        {
+          text: 'Got it',
+          onPress: () => {
+            setSubscriptions(prev => prev.filter(s => s.id !== sub.id));
+          }
+        }
+      ]
+    );
+  };
 
   const gradientColors: [string, string, string] = isDark
     ? ['#0A0A0A', '#111111', '#0A0A0A']
@@ -148,7 +176,7 @@ function AIScreen() {
               <SubscriptionCard 
                 key={sub.id} 
                 subscription={sub} 
-                onSimulateCancel={(s) => console.log('Cancel', s.merchantName)} 
+                onSimulateCancel={handleSimulateCancel} 
               />
             ))}
             

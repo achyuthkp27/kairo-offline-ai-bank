@@ -18,7 +18,8 @@
       "infoPlist": {
         "NSFaceIDUsageDescription": "Kairo uses Face ID to securely authenticate you into your banking account.",
         "NSCameraUsageDescription": "Kairo needs camera access to scan merchant QR codes for instant payments.",
-        "NSMicrophoneUsageDescription": "Kairo needs microphone access for video-based security verification.",
+        "NSMicrophoneUsageDescription": "Kairo needs microphone access for voice commands and security verification.",
+        "NSSpeechRecognitionUsageDescription": "Kairo uses speech recognition to allow you to talk to your AI assistant.",
         "ITSAppUsesNonExemptEncryption": false
       }
     },

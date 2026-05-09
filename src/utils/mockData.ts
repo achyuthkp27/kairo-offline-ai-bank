@@ -42,15 +42,78 @@ export const MOCK_TRANSACTIONS: Transaction[] = [
     accountSource: 'Centurion Credit',
     status: 'completed',
   },
+  // Recurring: Netflix (Monthly)
   {
-    id: 't4',
-    merchantName: 'Starbucks',
-    category: 'dining',
+    id: 't8_current',
+    merchantName: 'Netflix',
+    category: 'entertainment',
     type: 'debit',
-    amount: 380.00,
+    amount: 649.00,
     currency: '₹',
-    date: new Date(Date.now() - 86400000),
-    time: '09:10 AM',
+    date: new Date(Date.now() - 345600000), // 4 days ago
+    time: '12:00 AM',
+    accountSource: 'Centurion Credit',
+    status: 'completed',
+  },
+  {
+    id: 't8_prev',
+    merchantName: 'Netflix',
+    category: 'entertainment',
+    type: 'debit',
+    amount: 649.00,
+    currency: '₹',
+    date: new Date(Date.now() - 345600000 - (30 * 24 * 60 * 60 * 1000)), // 34 days ago
+    time: '12:00 AM',
+    accountSource: 'Centurion Credit',
+    status: 'completed',
+  },
+  // Recurring: Spotify (Monthly)
+  {
+    id: 't11_current',
+    merchantName: 'Spotify',
+    category: 'entertainment',
+    type: 'debit',
+    amount: 119.00,
+    currency: '₹',
+    date: new Date(Date.now() - 864000000), // 10 days ago
+    time: '10:00 AM',
+    accountSource: 'Platinum Savings',
+    status: 'completed',
+  },
+  {
+    id: 't11_prev',
+    merchantName: 'Spotify',
+    category: 'entertainment',
+    type: 'debit',
+    amount: 119.00,
+    currency: '₹',
+    date: new Date(Date.now() - 864000000 - (30 * 24 * 60 * 60 * 1000)), // 40 days ago
+    time: '10:00 AM',
+    accountSource: 'Platinum Savings',
+    status: 'completed',
+  },
+  // Recurring: Apple iCloud (Monthly)
+  {
+    id: 't12_current',
+    merchantName: 'Apple iCloud',
+    category: 'bills',
+    type: 'debit',
+    amount: 75.00,
+    currency: '₹',
+    date: new Date(Date.now() - 1296000000), // 15 days ago
+    time: '09:00 AM',
+    accountSource: 'Platinum Savings',
+    status: 'completed',
+  },
+  {
+    id: 't12_prev',
+    merchantName: 'Apple iCloud',
+    category: 'bills',
+    type: 'debit',
+    amount: 75.00,
+    currency: '₹',
+    date: new Date(Date.now() - 1296000000 - (30 * 24 * 60 * 60 * 1000)), // 45 days ago
+    time: '09:00 AM',
     accountSource: 'Platinum Savings',
     status: 'completed',
   },
@@ -90,16 +153,29 @@ export const MOCK_TRANSACTIONS: Transaction[] = [
     accountSource: 'Centurion Credit',
     status: 'completed',
   },
+  // Recurring: YouTube Premium (Monthly)
   {
-    id: 't8',
-    merchantName: 'Netflix Subscription',
+    id: 't13_current',
+    merchantName: 'YouTube Premium',
     category: 'entertainment',
     type: 'debit',
-    amount: 649.00,
+    amount: 129.00,
     currency: '₹',
-    date: new Date(Date.now() - 345600000),
-    time: '12:00 AM',
-    accountSource: 'Centurion Credit',
+    date: new Date(Date.now() - 432000000), // 5 days ago
+    time: '11:00 PM',
+    accountSource: 'Platinum Savings',
+    status: 'completed',
+  },
+  {
+    id: 't13_prev',
+    merchantName: 'YouTube Premium',
+    category: 'entertainment',
+    type: 'debit',
+    amount: 129.00,
+    currency: '₹',
+    date: new Date(Date.now() - 432000000 - (30 * 24 * 60 * 60 * 1000)), // 35 days ago
+    time: '11:00 PM',
+    accountSource: 'Platinum Savings',
     status: 'completed',
   },
   {
@@ -127,3 +203,4 @@ export const MOCK_TRANSACTIONS: Transaction[] = [
     status: 'completed',
   },
 ];
+
