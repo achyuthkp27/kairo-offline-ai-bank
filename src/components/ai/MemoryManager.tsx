@@ -1,10 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
-import { Colors, Typography, Spacing } from '../../theme';
+import { Typography, Spacing } from '../../theme';
+import { useThemeColors } from '../../hooks/useTheme';
 import { MemoryService, AIMemory } from '../../services/MemoryService';
 import { Trash2, Brain } from 'lucide-react-native';
 
 export function MemoryManager() {
+  const { Colors } = useThemeColors();
   const [memories, setMemories] = useState<AIMemory[]>([]);
 
   useEffect(() => {
@@ -20,6 +22,20 @@ export function MemoryManager() {
     await MemoryService.deleteMemory(id);
     await loadMemories();
   };
+
+  const styles = useMemo(() => StyleSheet.create({
+    container: { flex: 1, backgroundColor: Colors.background, padding: Spacing.base },
+    header: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.sm },
+    headerTitle: { fontFamily: Typography.fontFamily.bold, fontSize: Typography.fontSize.xl, color: Colors.textPrimary, marginLeft: Spacing.sm },
+    subtitle: { fontFamily: Typography.fontFamily.regular, fontSize: Typography.fontSize.sm, color: Colors.textSecondary, marginBottom: Spacing.xl },
+    list: { paddingBottom: Spacing['3xl'] },
+    card: { backgroundColor: Colors.cardSurface, padding: Spacing.base, borderRadius: 16, flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.md, borderWidth: 1, borderColor: Colors.cardBorder },
+    cardContent: { flex: 1 },
+    categoryLabel: { fontFamily: Typography.fontFamily.semiBold, fontSize: 10, color: Colors.accentBlue, marginBottom: 4 },
+    memoryValue: { fontFamily: Typography.fontFamily.medium, fontSize: Typography.fontSize.base, color: Colors.textPrimary },
+    deleteBtn: { padding: Spacing.sm },
+    emptyText: { fontFamily: Typography.fontFamily.regular, color: Colors.textTertiary, textAlign: 'center', marginTop: Spacing.xl },
+  }), [Colors]);
 
   const renderItem = ({ item }: { item: AIMemory }) => (
     <View style={styles.card}>
@@ -40,7 +56,7 @@ export function MemoryManager() {
         <Text style={styles.headerTitle}>Kairo Knows You</Text>
       </View>
       <Text style={styles.subtitle}>These memories help the AI personalize your experience.</Text>
-      
+
       <FlatList
         data={memories}
         keyExtractor={i => i.id}
@@ -51,17 +67,3 @@ export function MemoryManager() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background, padding: Spacing.base },
-  header: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.sm },
-  headerTitle: { fontFamily: Typography.fontFamily.bold, fontSize: Typography.fontSize.xl, color: Colors.textPrimary, marginLeft: Spacing.sm },
-  subtitle: { fontFamily: Typography.fontFamily.regular, fontSize: Typography.fontSize.sm, color: Colors.textSecondary, marginBottom: Spacing.xl },
-  list: { paddingBottom: Spacing['3xl'] },
-  card: { backgroundColor: Colors.cardSurface, padding: Spacing.base, borderRadius: 16, flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.md, borderWidth: 1, borderColor: Colors.cardBorder },
-  cardContent: { flex: 1 },
-  categoryLabel: { fontFamily: Typography.fontFamily.semiBold, fontSize: 10, color: Colors.accentBlue, marginBottom: 4 },
-  memoryValue: { fontFamily: Typography.fontFamily.medium, fontSize: Typography.fontSize.base, color: Colors.textPrimary },
-  deleteBtn: { padding: Spacing.sm },
-  emptyText: { fontFamily: Typography.fontFamily.regular, color: Colors.textTertiary, textAlign: 'center', marginTop: Spacing.xl },
-});

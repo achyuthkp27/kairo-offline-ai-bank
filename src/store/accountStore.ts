@@ -138,13 +138,19 @@ export const useAccountStore = create<AccountState>((set) => ({
   accountDetails: mockDetails,
 
   setActiveAccount: (index: number) => {
-    set((state) => ({
-      activeAccountIndex: index,
-      accounts: state.accounts.map((acc, i) => ({
-        ...acc,
-        isActive: i === index,
-      })),
-    }));
+    set((state) => {
+      if (index < 0 || index >= state.accounts.length) {
+        console.warn('[AccountStore] Invalid active account index:', index);
+        return state;
+      }
+      return {
+        activeAccountIndex: index,
+        accounts: state.accounts.map((acc, i) => ({
+          ...acc,
+          isActive: i === index,
+        })),
+      };
+    });
   },
 
   toggleBalanceVisibility: () => {

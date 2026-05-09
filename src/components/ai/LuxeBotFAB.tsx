@@ -3,19 +3,21 @@
  * Floating action button with a premium pulsing glow effect
  */
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import { StyleSheet, Pressable, Animated } from 'react-native';
 import { Sparkles } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Colors, Shadows } from '../../theme';
-import { useHaptics } from '../../hooks';
+import { Shadows } from '../../theme';
+import { useHaptics, useThemeColors } from '../../hooks';
 
 interface LuxeBotFABProps {
   onPress: () => void;
+  isSheetVisible?: boolean;
 }
 
-export const LuxeBotFAB: React.FC<LuxeBotFABProps> = ({ onPress }) => {
+export const LuxeBotFAB: React.FC<LuxeBotFABProps> = ({ onPress, isSheetVisible }) => {
   const { trigger } = useHaptics();
+  const { Colors } = useThemeColors();
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const glowAnim = useRef(new Animated.Value(0.4)).current;
 
@@ -57,8 +59,44 @@ export const LuxeBotFAB: React.FC<LuxeBotFABProps> = ({ onPress }) => {
     onPress();
   };
 
+  const styles = useMemo(() => StyleSheet.create({
+    container: {
+      position: 'absolute',
+      bottom: 20,
+      right: 20,
+      width: 60,
+      height: 60,
+      justifyContent: 'center',
+      alignItems: 'center',
+      zIndex: 100,
+    },
+    fab: {
+      width: 56,
+      height: 56,
+      borderRadius: 28,
+      justifyContent: 'center',
+      shadowColor: '#2E5BFF',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.5,
+      shadowRadius: 10,
+      elevation: 8,
+    },
+    glow: {
+      position: 'absolute',
+      width: 70,
+      height: 70,
+      borderRadius: 35,
+      backgroundColor: Colors.accentBlue,
+    },
+    hidden: {
+      zIndex: -1,
+      opacity: 0,
+      pointerEvents: 'none',
+    },
+  }), [Colors]);
+
   return (
-    <Pressable style={styles.container} onPress={handlePress}>
+    <Pressable style={[styles.container, isSheetVisible && styles.hidden]} onPress={handlePress}>
       {/* Animated Glow */}
       <Animated.View
         style={[
@@ -69,7 +107,7 @@ export const LuxeBotFAB: React.FC<LuxeBotFABProps> = ({ onPress }) => {
           },
         ]}
       />
-      
+
       {/* Button Surface */}
       <LinearGradient
         colors={['#2E5BFF', '#00D4FF']}
@@ -82,34 +120,3 @@ export const LuxeBotFAB: React.FC<LuxeBotFABProps> = ({ onPress }) => {
     </Pressable>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    position: 'absolute',
-    bottom: 20,
-    right: 20,
-    width: 60,
-    height: 60,
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 100,
-  },
-  fab: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    justifyContent: 'center',
-    shadowColor: '#2E5BFF',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 10,
-    elevation: 8,
-  },
-  glow: {
-    position: 'absolute',
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    backgroundColor: Colors.accentBlue,
-  },
-});

@@ -5,11 +5,12 @@
 
 import * as Haptics from 'expo-haptics';
 import { Platform } from 'react-native';
+import { useCallback } from 'react';
 
 export type HapticType = 'light' | 'medium' | 'heavy' | 'success' | 'warning' | 'error' | 'selection';
 
 export const useHaptics = () => {
-  const trigger = (type: HapticType = 'light') => {
+  const trigger = useCallback((type: HapticType = 'light') => {
     if (Platform.OS === 'web') return;
 
     switch (type) {
@@ -35,7 +36,7 @@ export const useHaptics = () => {
         Haptics.selectionAsync();
         break;
     }
-  };
+  }, []);
 
   return { trigger };
 };

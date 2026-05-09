@@ -3,8 +3,8 @@
  * Premium banking card with glassmorphism, gradients, and animated interactions
  */
 
-import React from 'react';
-import { View, Text, StyleSheet, Dimensions, Pressable } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, Dimensions, Pressable, Animated } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Eye, EyeOff } from 'lucide-react-native';
 import { Svg, Rect, Path } from 'react-native-svg';
@@ -51,6 +51,18 @@ export const AccountCard: React.FC<AccountCardProps> = ({
   onToggleBalance,
   onPress,
 }) => {
+  const balanceAnim = useRef(new Animated.Value(0)).current;
+  const balanceValue = account.balance;
+
+  useEffect(() => {
+    balanceAnim.setValue(0);
+    Animated.timing(balanceAnim, {
+      toValue: 1,
+      duration: 1500,
+      useNativeDriver: false,
+    }).start();
+  }, [account.id, balanceAnim]);
+
   return (
     <Pressable onPress={onPress}>
       <LinearGradient
@@ -59,7 +71,6 @@ export const AccountCard: React.FC<AccountCardProps> = ({
         end={{ x: 1, y: 1 }}
         style={[styles.container, account.isActive && styles.activeCard]}
       >
-        {/* Shine effect overlay */}
         <LinearGradient
           colors={['rgba(255,255,255,0.15)', 'transparent']}
           start={{ x: 0, y: 0 }}
@@ -81,11 +92,16 @@ export const AccountCard: React.FC<AccountCardProps> = ({
 
         <View style={styles.balanceContainer}>
           <View style={styles.balanceRow}>
-            <Text style={styles.balanceText}>
-              {isBalanceVisible
-                ? formatCurrency(account.balance, account.currency)
-                : formatMaskedCurrency(account.currency)}
-            </Text>
+            {isBalanceVisible ? (
+              <AnimatedNumber
+                animValue={balanceAnim}
+                targetValue={balanceValue}
+                style={styles.balanceText}
+                prefix="₹"
+              />
+            ) : (
+              <Text style={styles.balanceText}>{formatMaskedCurrency(account.currency)}</Text>
+            )}
             <Pressable onPress={onToggleBalance} style={styles.eyeButton}>
               {isBalanceVisible ? (
                 <EyeOff size={20} color="rgba(255,255,255,0.6)" strokeWidth={1.5} />
@@ -105,6 +121,28 @@ export const AccountCard: React.FC<AccountCardProps> = ({
         </View>
       </LinearGradient>
     </Pressable>
+  );
+};
+
+const AnimatedNumber: React.FC<{
+  animValue: Animated.Value;
+  targetValue: number;
+  style: object;
+  prefix?: string;
+}> = ({ animValue, targetValue, style, prefix = '' }) => {
+  const [displayValue, setDisplayValue] = useState(0);
+
+  useEffect(() => {
+    const listener = animValue.addListener(({ value }) => {
+      setDisplayValue(value * targetValue);
+    });
+    return () => animValue.removeListener(listener);
+  }, [animValue, targetValue]);
+
+  return (
+    <Animated.Text style={style}>
+      {prefix}{Math.round(displayValue).toLocaleString('en-IN')}
+    </Animated.Text>
   );
 };
 

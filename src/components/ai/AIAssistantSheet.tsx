@@ -16,16 +16,23 @@ import {
   Platform,
   ScrollView,
   Alert,
+  ActivityIndicator,
+  TextStyle,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { useRouter } from 'expo-router';
-import { X, Send, Sparkles, Lock } from 'lucide-react-native';
+import { X, Send, Sparkles, Lock, Square, RefreshCw, Trash2 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
-import { Colors, Typography, Spacing } from '../../theme';
-import { useHaptics } from '../../hooks';
+import { Typography, Spacing, Colors as ThemeColors } from '../../theme';
+import { useHaptics, useThemeColors } from '../../hooks';
 import { useLlama } from '../../hooks/useLlama';
 import { useUIStore, useAccountStore, useNotificationStore } from '../../store';
+import type { AIAction } from '../../store/chatStore';
+import type { Account } from '../../store/accountStore';
+
+// Fallback Colors for static styles - will be replaced by dynamic Colors when component renders
+let Colors = ThemeColors;
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -37,14 +44,21 @@ interface AIAssistantSheetProps {
 interface Message {
   id: string;
   text: string;
-  sender: 'user' | 'bot';
+  sender: 'user' | 'assistant' | 'bot';
   isStreaming?: boolean;
 }
 
 const SUGGESTED_PROMPTS = [
-  "What is my net worth?",
-  "How much did I spend on food?",
-  "Freeze my credit card",
+  "What's my current net worth?",
+  "Am I on track for my savings goal?",
+  "How much did I spend this month?",
+  "Any unusual transactions?",
+  "Show my investment portfolio",
+  "How much left in my budget?",
+  "Pay my credit card bill",
+  "Create a new savings goal",
+  "Analyze my spending pattern",
+  "Should I invest more?",
 ];
 
 const TypingIndicator = () => {
@@ -87,7 +101,7 @@ const TypingIndicator = () => {
   );
 };
 
-const RichText = ({ text, style, isStreaming }: { text: string; style: any; isStreaming?: boolean }) => {
+const RichText = ({ text, style, isStreaming }: { text: string; style?: TextStyle | TextStyle[]; isStreaming?: boolean }) => {
   const parts = text.split(/(\*\*.*?\*\*|\n)/g);
   return (
     <Text style={style}>
@@ -109,6 +123,7 @@ const RichText = ({ text, style, isStreaming }: { text: string; style: any; isSt
 
 export const AIAssistantSheet: React.FC<AIAssistantSheetProps> = ({ isVisible, onClose }) => {
   const { trigger } = useHaptics();
+  const { Colors, isDark } = useThemeColors();
   const { initialAIQuery, setInitialAIQuery } = useUIStore();
   const [inputText, setInputText] = useState('');
   
@@ -141,18 +156,25 @@ export const AIAssistantSheet: React.FC<AIAssistantSheetProps> = ({ isVisible, o
     returns: 'wealth',
   };
   
-  const { accounts, toggleCardFreeze } = useAccountStore();
   const { addNotification } = useNotificationStore();
+  const accountsRef = useRef(useAccountStore.getState().accounts);
+  const toggleCardFreezeRef = useRef(useAccountStore.getState().toggleCardFreeze);
 
-  // Use a ref so the callback never goes stale
-  const onCloseRef = React.useRef(onClose);
+  useEffect(() => {
+    const unsub = useAccountStore.subscribe((state) => {
+      accountsRef.current = state.accounts;
+      toggleCardFreezeRef.current = state.toggleCardFreeze;
+    });
+    return unsub;
+  }, []);
+
+  const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
-  const handleAction = useCallback((action: any) => {
+  const handleAction = useCallback((action: AIAction) => {
     if (!action || !action.action) return;
     trigger('light');
-    
-    // Normalize AI hallucinations into standard navigation
+
     let actionType = action.action;
     let actionDetails = action.details;
     
@@ -164,7 +186,6 @@ export const AIAssistantSheet: React.FC<AIAssistantSheetProps> = ({ isVisible, o
     if (actionType === 'navigate' && actionDetails) {
       const words = actionDetails.toLowerCase().trim().split(/\s+/);
       
-      // Find the first word that maps to a valid tab
       let resolvedTab: string | null = null;
       for (const word of words) {
         if (WORD_TO_TAB[word]) {
@@ -174,7 +195,6 @@ export const AIAssistantSheet: React.FC<AIAssistantSheetProps> = ({ isVisible, o
       }
       
       if (resolvedTab) {
-        console.log(`[Kairo] Navigating to /(tabs)/${resolvedTab}`);
         onCloseRef.current();
         setTimeout(() => {
           router.navigate(`/(tabs)/${resolvedTab}` as any);
@@ -197,9 +217,10 @@ export const AIAssistantSheet: React.FC<AIAssistantSheetProps> = ({ isVisible, o
             style: 'default',
             onPress: () => {
               trigger('success');
+              const currentAccounts = accountsRef.current;
               if (action.action === 'freeze') {
-                const activeAccount = accounts.find(a => a.isActive) || accounts[0];
-                toggleCardFreeze(activeAccount.id);
+                const activeAccount = currentAccounts.find((a: Account) => a.isActive) || currentAccounts[0];
+                toggleCardFreezeRef.current(activeAccount.id);
                 addNotification({
                   title: 'Security Alert',
                   message: `Your ${activeAccount.name} card has been successfully frozen as requested.`,
@@ -218,7 +239,7 @@ export const AIAssistantSheet: React.FC<AIAssistantSheetProps> = ({ isVisible, o
         ]
       );
     }
-  }, [trigger, router, accounts, toggleCardFreeze, addNotification]);
+  }, [trigger, router, addNotification]);
 
   const { 
     messages, 
@@ -230,20 +251,27 @@ export const AIAssistantSheet: React.FC<AIAssistantSheetProps> = ({ isVisible, o
     downloadedSize,
     isPaused,
     modelExists,
+    modelReady,
+    initError,
     isNativeAvailable,
     handleDownload,
     pauseDownload,
     resumeDownload,
     cancelDownload,
-    sendMessage 
+    cancelGeneration,
+    sendMessage,
+    retryInit,
+    clearChat,
   } = useLlama(handleAction);
   const scrollViewRef = useRef<ScrollView>(null);
   
   const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const [isSheetMounted, setIsSheetMounted] = useState(false);
 
   useEffect(() => {
     if (isVisible) {
+      setIsSheetMounted(true);
       Animated.parallel([
         Animated.spring(slideAnim, {
           toValue: 0,
@@ -290,7 +318,7 @@ export const AIAssistantSheet: React.FC<AIAssistantSheetProps> = ({ isVisible, o
     await sendMessage(textToSend);
   };
 
-  if (!isVisible && fadeAnim.setOffset === undefined) return null;
+  if (!isVisible && !isSheetMounted) return null;
 
   return (
     <View style={[StyleSheet.absoluteFill, { zIndex: 999 }]} pointerEvents={isVisible ? 'auto' : 'none'}>
@@ -321,9 +349,27 @@ export const AIAssistantSheet: React.FC<AIAssistantSheetProps> = ({ isVisible, o
             </LinearGradient>
             <Text style={styles.headerTitle}>Luxe-Bot</Text>
           </View>
-          <Pressable onPress={() => { trigger('light'); onClose(); }} style={styles.closeBtn}>
-            <X size={20} color={Colors.textSecondary} />
-          </Pressable>
+          <View style={styles.headerActions}>
+            {isTyping && (
+              <Pressable
+                style={styles.cancelBtn}
+                onPress={() => { trigger('light'); cancelGeneration(); }}
+              >
+                <Square size={14} color={Colors.error} />
+              </Pressable>
+            )}
+            {messages.length > 1 && (
+              <Pressable
+                style={styles.clearBtn}
+                onPress={() => { trigger('light'); clearChat(); }}
+              >
+                <Trash2 size={16} color={Colors.textMuted} />
+              </Pressable>
+            )}
+            <Pressable onPress={() => { trigger('light'); onClose(); }} style={styles.closeBtn}>
+              <X size={20} color={Colors.textSecondary} />
+            </Pressable>
+          </View>
         </View>
 
         {/* Chat Area */}
@@ -347,7 +393,7 @@ export const AIAssistantSheet: React.FC<AIAssistantSheetProps> = ({ isVisible, o
               >
                 {msg.text === '' && msg.isStreaming ? (
                   <TypingIndicator />
-                ) : msg.sender === 'bot' ? (
+                ) : msg.sender !== 'user' ? (
                   <RichText 
                     text={msg.text.replace(/```json[\s\S]*/, '').trim()} 
                     style={[styles.messageText, styles.botText]} 
@@ -409,6 +455,38 @@ export const AIAssistantSheet: React.FC<AIAssistantSheetProps> = ({ isVisible, o
               </View>
             )}
 
+            {isNativeAvailable && modelExists && !modelReady && !isDownloading && !isInitializing && (
+              <View style={styles.downloadContainer}>
+                <LinearGradient
+                  colors={['rgba(255, 77, 109, 0.15)', 'rgba(0, 0, 0, 0.3)']}
+                  style={styles.downloadCard}
+                >
+                  <View style={{ marginBottom: 16 }}>
+                    <RefreshCw size={32} color={Colors.error} />
+                  </View>
+                  <Text style={[styles.downloadTitle, { color: Colors.error }]}>Model Failed to Load</Text>
+                  <Text style={styles.downloadSub}>
+                    {initError || 'The AI model exists but could not be loaded. It may be corrupted or incompatible.'}
+                  </Text>
+                  
+                  <View style={{ gap: 10, width: '100%' }}>
+                    <Pressable 
+                      style={[styles.primaryDownloadBtn, { backgroundColor: Colors.error }]}
+                      onPress={() => { trigger('light'); handleDownload(); }}
+                    >
+                      <Text style={styles.primaryDownloadBtnText}>Re-download Model</Text>
+                    </Pressable>
+                    <Pressable 
+                      style={styles.controlBtn}
+                      onPress={() => { trigger('light'); retryInit(); }}
+                    >
+                      <Text style={styles.controlBtnText}>Delete & Reset</Text>
+                    </Pressable>
+                  </View>
+                </LinearGradient>
+              </View>
+            )}
+
             {isDownloading && (
               <View style={styles.downloadContainer}>
                 <LinearGradient
@@ -441,7 +519,7 @@ export const AIAssistantSheet: React.FC<AIAssistantSheetProps> = ({ isVisible, o
                         <Text style={styles.controlBtnText}>Pause</Text>
                       </Pressable>
                     )}
-                    <Pressable style={[styles.controlBtn, styles.cancelBtn]} onPress={cancelDownload}>
+                    <Pressable style={[styles.controlBtn, styles.cancelActionBtn]} onPress={cancelDownload}>
                       <Text style={[styles.controlBtnText, { color: Colors.error }]}>Cancel</Text>
                     </Pressable>
                   </View>
@@ -493,12 +571,12 @@ export const AIAssistantSheet: React.FC<AIAssistantSheetProps> = ({ isVisible, o
               returnKeyType="send"
               blurOnSubmit={false}
               maxLength={200}
-              editable={modelExists && !isDownloading}
+              editable={modelReady && !isDownloading}
             />
             <Pressable 
-              style={[styles.sendButton, (!inputText.trim() || isTyping || !modelExists) && styles.sendButtonDisabled]}
+              style={[styles.sendButton, (!inputText.trim() || isTyping || !modelReady) && styles.sendButtonDisabled]}
               onPress={handleSend}
-              disabled={!inputText.trim() || isTyping || !modelExists}
+              disabled={!inputText.trim() || isTyping || !modelReady}
             >
               <Send size={18} color={inputText.trim() && !isTyping ? Colors.background : Colors.textMuted} />
             </Pressable>
@@ -552,6 +630,27 @@ const styles = StyleSheet.create({
     fontFamily: Typography.fontFamily.bold,
     fontSize: Typography.fontSize.lg,
     color: Colors.textPrimary,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  cancelBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255, 77, 109, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clearBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   closeBtn: {
     width: 36,
@@ -778,7 +877,7 @@ const styles = StyleSheet.create({
     fontSize: Typography.fontSize.sm,
     color: Colors.textPrimary,
   },
-  cancelBtn: {
+  cancelActionBtn: {
     borderColor: 'rgba(255, 77, 109, 0.2)',
   },
   initializingContainer: {

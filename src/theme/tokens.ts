@@ -62,6 +62,45 @@ export const Colors = {
   shimmerHighlight: 'rgba(255, 255, 255, 0.08)',
 } as const;
 
+export const LightColors = {
+  background: '#F5F5F7',
+  backgroundSecondary: '#FFFFFF',
+  backgroundTertiary: '#F0F0F2',
+  cardSurface: 'rgba(255, 255, 255, 0.9)',
+  cardSurfaceHover: 'rgba(255, 255, 255, 0.95)',
+  cardSurfaceActive: 'rgba(255, 255, 255, 1)',
+  cardBorder: 'rgba(0, 0, 0, 0.08)',
+  cardBorderHover: 'rgba(0, 0, 0, 0.15)',
+  accentBlue: '#2E5BFF',
+  accentBlueSoft: 'rgba(46, 91, 255, 0.12)',
+  accentBlueGlow: 'rgba(46, 91, 255, 0.25)',
+  accentCyan: '#00A3CC',
+  accentCyanSoft: 'rgba(0, 163, 204, 0.12)',
+  accentCyanGlow: 'rgba(0, 163, 204, 0.25)',
+  success: '#00CC66',
+  successSoft: 'rgba(0, 204, 102, 0.12)',
+  successGlow: 'rgba(0, 204, 102, 0.25)',
+  error: '#E53935',
+  errorSoft: 'rgba(229, 57, 53, 0.12)',
+  errorGlow: 'rgba(229, 57, 53, 0.25)',
+  warning: '#F9A825',
+  warningSoft: 'rgba(249, 168, 37, 0.12)',
+  gold: '#C9A227',
+  goldSoft: 'rgba(201, 162, 39, 0.12)',
+  goldGlow: 'rgba(201, 162, 39, 0.25)',
+  textPrimary: '#0A0A0A',
+  textSecondary: 'rgba(10, 10, 10, 0.70)',
+  textTertiary: 'rgba(10, 10, 10, 0.45)',
+  textMuted: 'rgba(10, 10, 10, 0.25)',
+  textInverse: '#FFFFFF',
+  divider: 'rgba(0, 0, 0, 0.08)',
+  border: 'rgba(0, 0, 0, 0.12)',
+  overlay: 'rgba(0, 0, 0, 0.40)',
+  overlayHeavy: 'rgba(0, 0, 0, 0.70)',
+  shimmerBase: 'rgba(0, 0, 0, 0.04)',
+  shimmerHighlight: 'rgba(255, 255, 255, 0.8)',
+} as const;
+
 export const Gradients = {
   // Card gradients
   cardPrimary: ['#1A1F3D', '#0D1117'] as const,
@@ -249,6 +288,27 @@ export const AnimationConfig = {
     slow: 400,
     cinematic: 600,
     dramatic: 800,
+  },
+} as const;
+
+export const LightGlassmorphism = {
+  light: {
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 0, 0, 0.08)',
+    blurIntensity: 20,
+  },
+  medium: {
+    backgroundColor: 'rgba(255, 255, 255, 0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 0, 0, 0.12)',
+    blurIntensity: 40,
+  },
+  heavy: {
+    backgroundColor: 'rgba(255, 255, 255, 0.98)',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 0, 0, 0.15)',
+    blurIntensity: 60,
   },
 } as const;
 

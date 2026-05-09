@@ -5,6 +5,7 @@
 export { default as theme } from './tokens';
 export {
   Colors,
+  LightColors,
   Gradients,
   Typography,
   Spacing,

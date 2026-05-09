@@ -1,12 +1,7 @@
-/**
- * Kairo — useLlama Hook
- * React hook for managing chat state, streaming logic, and model lifecycle
- */
-
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { llamaEngine } from '../ai/llamaEngine';
-import { checkModelExists, downloadManager } from '../ai/modelManager';
-import { useChatStore } from '../store/chatStore';
+import { checkModelExists, downloadManager, deleteModel } from '../ai/modelManager';
+import { useChatStore, type AIAction, type AIActionType } from '../store/chatStore';
 import { MemoryWorker } from '../workers/MemoryWorker';
 import type { ChatMessage } from '../store/chatStore';
 
@@ -14,8 +9,10 @@ import { NativeModules } from 'react-native';
 
 export type { ChatMessage } from '../store/chatStore';
 
-export const useLlama = (onAction?: (action: any) => void) => {
-  const { messages, setMessages } = useChatStore();
+const STREAM_BATCH_INTERVAL = 50;
+
+export const useLlama = (onAction?: (action: AIAction) => void) => {
+  const { messages, setMessages, clearChat } = useChatStore();
   const [isInitializing, setIsInitializing] = useState(true);
   const [isTyping, setIsTyping] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
@@ -24,14 +21,28 @@ export const useLlama = (onAction?: (action: any) => void) => {
   const [isDownloading, setIsDownloading] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [modelExists, setModelExists] = useState(false);
+  const [modelReady, setModelReady] = useState(false);
+  const [initError, setInitError] = useState<string | null>(null);
   const [isNativeAvailable, setIsNativeAvailable] = useState(true);
 
-  // Check model status on mount
+  const isTypingRef = useRef(false);
+  const abortRef = useRef<AbortController | null>(null);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      llamaEngine.cancelGeneration();
+      llamaEngine.unloadModel();
+      clearChat();
+    };
+  }, [clearChat]);
+
   useEffect(() => {
     let mounted = true;
 
     const checkStatus = async () => {
-      // Strict check for native module
       if (!NativeModules.RNLlama) {
         if (mounted) {
           setIsNativeAvailable(false);
@@ -45,11 +56,21 @@ export const useLlama = (onAction?: (action: any) => void) => {
         if (mounted) {
           setModelExists(exists);
           if (exists) {
-            await llamaEngine.initializeModel();
+            const loaded = await llamaEngine.initializeModel();
+            if (mounted) {
+              setModelReady(loaded);
+              if (!loaded) {
+                setInitError('Model file exists but failed to load. It may be corrupted.');
+              }
+            }
           }
         }
       } catch (e) {
-        console.error('Initial engine boot failed', e);
+        console.error('[useLlama] Initial engine boot failed', e);
+        if (mounted) {
+          setModelReady(false);
+          setInitError(`Engine boot error: ${e instanceof Error ? e.message : String(e)}`);
+        }
       } finally {
         if (mounted) setIsInitializing(false);
       }
@@ -62,24 +83,39 @@ export const useLlama = (onAction?: (action: any) => void) => {
   const handleDownload = async () => {
     setIsDownloading(true);
     setIsPaused(false);
+    setInitError(null);
     try {
       await downloadManager.startDownload((progress, written, total) => {
-        setDownloadProgress(progress);
-        setDownloadedSize(written);
-        setTotalSize(total);
+        if (mountedRef.current) {
+          setDownloadProgress(progress);
+          setDownloadedSize(written);
+          setTotalSize(total);
+        }
       });
+      if (!mountedRef.current) return;
       setModelExists(true);
       setIsDownloading(false);
-      
-      // Auto-init after successful download
+
       setIsInitializing(true);
-      await llamaEngine.initializeModel();
-      setIsInitializing(false);
+      const loaded = await llamaEngine.initializeModel();
+      if (mountedRef.current) {
+        setModelReady(loaded);
+        if (!loaded) {
+          setInitError('Model downloaded but failed to initialize. It may be corrupted.');
+        }
+        setIsInitializing(false);
+      }
     } catch (error) {
-      console.error('Download failed:', error);
+      if (!mountedRef.current) return;
+      setModelExists(false);
+      setModelReady(false);
       setIsDownloading(false);
     }
   };
+
+  const cancelGeneration = useCallback(() => {
+    llamaEngine.cancelGeneration();
+  }, []);
 
   const pauseDownload = async () => {
     await downloadManager.pause();
@@ -98,75 +134,96 @@ export const useLlama = (onAction?: (action: any) => void) => {
   };
 
   const sendMessage = useCallback(async (text: string) => {
-    if (!text.trim() || isTyping || !modelExists || !isNativeAvailable) return;
+    if (!text.trim() || isTypingRef.current || !modelReady || !isNativeAvailable) return;
 
-    // 1. Add User Message
     const userMsg: ChatMessage = {
-      id: Date.now().toString(),
+      id: `${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
       text: text.trim(),
       sender: 'user',
     };
     setMessages((prev) => [...prev, userMsg]);
+    isTypingRef.current = true;
     setIsTyping(true);
 
-    // 2. Prepare Bot Message Placeholder
-    const botMsgId = (Date.now() + 1).toString();
+    const botMsgId = `${Date.now() + 1}_${Math.random().toString(36).substring(2, 8)}`;
     setMessages((prev) => [
       ...prev,
-      { id: botMsgId, text: '', sender: 'bot', isStreaming: true },
+      { id: botMsgId, text: '', sender: 'assistant', isStreaming: true },
     ]);
 
+    const abortController = new AbortController();
+    abortRef.current = abortController;
+
     try {
-      const history = messages
+      const currentMsgs = useChatStore.getState().messages;
+      const history = currentMsgs
+        .filter(msg => msg.sender !== 'user' || (msg.id !== userMsg.id && msg.text.trim().length > 0))
         .filter(msg => !msg.isStreaming && msg.text.trim().length > 0)
         .map(msg => ({
           role: msg.sender === 'user' ? 'user' as const : 'assistant' as const,
           content: msg.text
         }));
 
-      // 3. Stream Inference Tokens
-      const stream = llamaEngine.generateNativeStream(text, history);
-      
+      const stream = llamaEngine.generateNativeStream(text, history, abortController.signal);
+
+      let batchedText = '';
+      let lastBatchUpdate = Date.now();
+
       for await (const token of stream) {
-        setMessages((prev) => 
-          prev.map((msg) => 
-            msg.id === botMsgId 
-              ? { ...msg, text: msg.text + token } 
+        if (abortController.signal.aborted) break;
+        batchedText += token;
+
+        const now = Date.now();
+        if (now - lastBatchUpdate >= STREAM_BATCH_INTERVAL && batchedText.length > 0) {
+          const delta = batchedText;
+          batchedText = '';
+          lastBatchUpdate = now;
+          if (!delta) continue;
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === botMsgId
+                ? { ...msg, text: msg.text + delta }
+                : msg
+            )
+          );
+        }
+      }
+
+      if (batchedText.length > 0) {
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === botMsgId
+              ? { ...msg, text: msg.text + batchedText }
               : msg
           )
         );
       }
 
-      // 5. Run Memory Extraction in background (non-blocking)
-      try {
-        const currentHistory = useChatStore.getState().messages;
-        MemoryWorker.extractMemories(
-          currentHistory.map(m => ({ 
-            role: m.sender === 'bot' ? 'assistant' as const : 'user' as const, 
-            content: m.text 
-          }))
-        );
-      } catch (memErr) {
-        console.warn('[useLlama] Memory extraction skipped:', memErr);
-      }
-    } catch (error) {
-      console.error('Inference error:', error);
-      setMessages((prev) => 
-        prev.map((msg) => 
-          msg.id === botMsgId 
-            ? { ...msg, text: 'I apologize, but I encountered a secure processing error. Please try again.' } 
+      const currentHistory = useChatStore.getState().messages;
+      MemoryWorker.extractMemories(
+        currentHistory.map(m => ({
+          role: m.sender === 'assistant' ? 'assistant' as const : 'user' as const,
+          content: m.text
+        }))
+      ).catch((e) => console.warn('[useLlama] Memory extraction failed:', e));
+    } catch (error: unknown) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      if (err.message === 'Generation cancelled') return;
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === botMsgId
+            ? { ...msg, text: msg.text || 'I apologize, but I encountered a processing error. Please try again.' }
             : msg
         )
       );
     } finally {
-      // 4. Finalize Stream
-      setMessages((prev) => 
+      abortRef.current = null;
+      setMessages((prev) =>
         prev.map((msg) => {
           if (msg.id === botMsgId) {
             let finalText = msg.text;
-            let actionData: any = null;
-            
-            // Strip any leaked internal prompt tags
+
             finalText = finalText
               .replace(/\[USER_CONTEXT\]:?[^\n]*/gi, '')
               .replace(/\[LIVE_DATA(?:_INJECT)?\]:?[^\n]*/gi, '')
@@ -175,33 +232,41 @@ export const useLlama = (onAction?: (action: any) => void) => {
               .replace(/<\|im_start\|>[^\n]*/g, '')
               .replace(/<\|im_end\|>/g, '')
               .trim();
-            
+
+            let actionData: AIAction | null = null;
             let actionMatch = finalText.match(/```(?:json)?\n([\s\S]*?)\n```/);
             let jsonString = actionMatch ? actionMatch[1] : null;
             let replaceRegex: RegExp = /```(?:json)?\n[\s\S]*?\n```/;
 
             if (!jsonString) {
-              const fallbackMatch = finalText.match(/(\{[\s\S]*"action"[\s\S]*\})/);
+              const limitedText = finalText.slice(-500);
+              const fallbackMatch = limitedText.match(/(\{[^}]*"action"[^}]*\})/);
               if (fallbackMatch) {
                 jsonString = fallbackMatch[1];
-                replaceRegex = /\{[\s\S]*"action"[\s\S]*\}/;
+                replaceRegex = /\{[^}]*"action"[^}]*\}/;
               }
             }
 
             if (jsonString) {
               try {
-                actionData = JSON.parse(jsonString);
-                finalText = finalText.replace(replaceRegex, '').trim();
-                if (!finalText && actionData) {
-                  finalText = actionData.action === 'navigate' 
-                    ? `Taking you to ${actionData.details || 'the requested page'}...`
-                    : `Executing: ${actionData.action}`;
-                }
-                if (onAction && actionData) {
-                   setTimeout(() => onAction(actionData), 100);
+                const parsedAction = JSON.parse(jsonString);
+                if (parsedAction.action) {
+                  actionData = {
+                    action: parsedAction.action as AIAction['action'],
+                    details: parsedAction.details,
+                  };
+                  finalText = finalText.replace(replaceRegex, '').trim();
+                  if (!finalText && actionData) {
+                    finalText = actionData.action === 'navigate'
+                      ? `Taking you to ${actionData.details || 'the requested page'}...`
+                      : `Executing: ${actionData.action}`;
+                  }
+                  if (onAction && actionData) {
+                    setTimeout(() => onAction(actionData!), 100);
+                  }
                 }
               } catch (e) {
-                console.error('Failed to parse action JSON', e);
+                if (__DEV__) console.log('[useLlama] JSON parse failed:', e);
               }
             }
             return { ...msg, isStreaming: false, text: finalText, action: actionData };
@@ -209,9 +274,24 @@ export const useLlama = (onAction?: (action: any) => void) => {
           return msg;
         })
       );
+      isTypingRef.current = false;
       setIsTyping(false);
     }
-  }, [isTyping, messages, modelExists, isNativeAvailable]);
+  }, [modelReady, isNativeAvailable, onAction]);
+
+  const retryInit = useCallback(async () => {
+    setIsInitializing(true);
+    setInitError(null);
+    try {
+      await deleteModel();
+      setModelExists(false);
+      setModelReady(false);
+      setIsInitializing(false);
+    } catch (e) {
+      console.error('[useLlama] retryInit failed:', e);
+      setIsInitializing(false);
+    }
+  }, []);
 
   return {
     messages,
@@ -223,11 +303,16 @@ export const useLlama = (onAction?: (action: any) => void) => {
     downloadedSize,
     isPaused,
     modelExists,
+    modelReady,
+    initError,
     isNativeAvailable,
     handleDownload,
     pauseDownload,
     resumeDownload,
     cancelDownload,
+    cancelGeneration,
     sendMessage,
+    retryInit,
+    clearChat,
   };
 };

@@ -4,7 +4,7 @@
  * floating orbs, glassmorphism card, and shake error animation
  */
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -30,22 +30,167 @@ import {
 } from 'lucide-react-native';
 
 import { useAuthStore } from '../src/store';
-import { useHaptics } from '../src/hooks';
+import { useHaptics, useThemeColors } from '../src/hooks';
 import { AnimatedOrb } from '../src/components/common/AnimatedOrb';
 import { GlassCard } from '../src/components/common/GlassCard';
 import { PremiumInput } from '../src/components/inputs/PremiumInput';
 import { PremiumButton } from '../src/components/buttons/PremiumButton';
-import { Colors, Typography, Spacing, Gradients } from '../src/theme';
+import { Typography, Spacing, Gradients } from '../src/theme';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 export default function LoginScreen() {
   const [userId, setUserId] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [rememberDevice, setRememberDevice] = useState(false);
 
-  const { login, isLoading, error, clearError } = useAuthStore();
+  const { login, register, isLoading, error, clearError, isFirstLaunch, isCheckingFirstLaunch, checkFirstLaunch, biometricLogin, setRememberedDevice, isDeviceRemembered } = useAuthStore();
   const { trigger } = useHaptics();
+  const { Colors, isDark } = useThemeColors();
+
+  const isRegistering = isFirstLaunch && !isCheckingFirstLaunch;
+
+  const gradientColors: [string, string, string, string] = isDark
+    ? ['#050510', '#0A0A1A', '#0D0D20', '#050510']
+    : ['#F5F5F7', '#FFFFFF', '#F0F0F2', '#F5F5F7'];
+
+  const styles = useMemo(() => StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: isDark ? '#050510' : '#F5F5F7',
+    },
+    contentWrapper: {
+      flex: 1,
+    },
+    keyboardView: {
+      flex: 1,
+    },
+    scrollContent: {
+      flexGrow: 1,
+      justifyContent: 'center',
+      paddingHorizontal: Spacing.xl,
+      paddingVertical: Spacing['3xl'],
+    },
+    logoSection: {
+      alignItems: 'center',
+      marginBottom: Spacing['3xl'],
+    },
+    logoMark: {
+      marginBottom: Spacing.lg,
+    },
+    logoImage: {
+      width: 80,
+      height: 80,
+      borderRadius: 20,
+    },
+    logoText: {
+      fontFamily: Typography.fontFamily.black,
+      fontSize: Typography.fontSize['4xl'],
+      color: Colors.textPrimary,
+      letterSpacing: Typography.letterSpacing.widest + 4,
+    },
+    logoSubtext: {
+      fontFamily: Typography.fontFamily.medium,
+      fontSize: Typography.fontSize.xs,
+      color: Colors.textMuted,
+      letterSpacing: Typography.letterSpacing.widest + 2,
+      marginTop: Spacing.xs,
+    },
+    loginCard: {
+      borderWidth: 0,
+    },
+    cardContent: {
+      padding: Spacing.xl,
+    },
+    cardTitle: {
+      fontFamily: Typography.fontFamily.bold,
+      fontSize: Typography.fontSize.xl,
+      color: Colors.textPrimary,
+      marginBottom: Spacing.xs,
+    },
+    cardSubtitle: {
+      fontFamily: Typography.fontFamily.regular,
+      fontSize: Typography.fontSize.sm,
+      color: Colors.textTertiary,
+      marginBottom: Spacing.xl,
+    },
+    inputsContainer: {
+      marginBottom: Spacing.sm,
+    },
+    rememberRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: Spacing.xl,
+    },
+    toggleTrack: {
+      width: 40,
+      height: 22,
+      borderRadius: 11,
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.10)' : 'rgba(0, 0, 0, 0.10)',
+      padding: 2,
+      justifyContent: 'center',
+    },
+    toggleTrackActive: {
+      backgroundColor: Colors.accentBlue,
+    },
+    toggleThumb: {
+      width: 18,
+      height: 18,
+      borderRadius: 9,
+      backgroundColor: Colors.textTertiary,
+    },
+    toggleThumbActive: {
+      alignSelf: 'flex-end',
+      backgroundColor: Colors.textPrimary,
+    },
+    rememberText: {
+      fontFamily: Typography.fontFamily.regular,
+      fontSize: Typography.fontSize.sm,
+      color: Colors.textSecondary,
+      marginLeft: Spacing.md,
+    },
+    loginButton: {
+      marginBottom: Spacing.lg,
+    },
+    separator: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: Spacing.lg,
+    },
+    separatorLine: {
+      flex: 1,
+      height: 1,
+      backgroundColor: Colors.divider,
+    },
+    separatorText: {
+      fontFamily: Typography.fontFamily.regular,
+      fontSize: Typography.fontSize.sm,
+      color: Colors.textMuted,
+      marginHorizontal: Spacing.base,
+    },
+    footer: {
+      alignItems: 'center',
+      marginTop: Spacing['2xl'],
+    },
+    securityBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: isDark ? 'rgba(0, 255, 153, 0.06)' : 'rgba(0, 204, 102, 0.08)',
+      paddingVertical: Spacing.sm,
+      paddingHorizontal: Spacing.base,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(0, 255, 153, 0.10)' : 'rgba(0, 204, 102, 0.15)',
+    },
+    securityText: {
+      fontFamily: Typography.fontFamily.medium,
+      fontSize: Typography.fontSize.xs,
+      color: Colors.success,
+      marginLeft: Spacing.sm,
+      letterSpacing: Typography.letterSpacing.wide,
+    },
+  }), [Colors, isDark]);
 
   // Animations
   const shakeAnim = useRef(new Animated.Value(0)).current;
@@ -87,14 +232,20 @@ export default function LoginScreen() {
     sequence.start();
   }, []);
 
+  // Check first launch on mount
+  useEffect(() => {
+    checkFirstLaunch();
+  }, []);
+
   // Auto-login if device is remembered
   useEffect(() => {
+    if (isCheckingFirstLaunch) return;
+
     const checkRemembered = async () => {
       try {
-        const remembered = useAuthStore.getState().isDeviceRemembered;
+        const remembered = await isDeviceRemembered();
         if (remembered) {
           setRememberDevice(true);
-          // Auto-trigger biometric auth
           const compatible = await LocalAuthentication.hasHardwareAsync();
           const enrolled = await LocalAuthentication.isEnrolledAsync();
           if (compatible && enrolled) {
@@ -104,8 +255,10 @@ export default function LoginScreen() {
               disableDeviceFallback: false,
             });
             if (result.success) {
-              await useAuthStore.getState().login('Achu27', 'Achu');
-              router.replace('/(tabs)/dashboard');
+              const success = await biometricLogin();
+              if (success) {
+                router.replace('/(tabs)/dashboard');
+              }
             }
           }
         }
@@ -114,7 +267,7 @@ export default function LoginScreen() {
       }
     };
     setTimeout(checkRemembered, 1200);
-  }, []);
+  }, [isCheckingFirstLaunch]);
 
   // Shake animation for errors
   const triggerShake = useCallback(() => {
@@ -152,17 +305,22 @@ export default function LoginScreen() {
       return;
     }
 
+    if (isRegistering && password !== confirmPassword) {
+      triggerShake();
+      return;
+    }
+
     clearError();
-    const success = await login(userId.trim(), password.trim());
+
+    const success = isRegistering
+      ? await register(userId.trim(), password.trim())
+      : await login(userId.trim(), password.trim());
 
     if (success) {
       trigger('success');
       if (rememberDevice) {
-        useAuthStore.getState().setDeviceRemembered(true);
-      } else {
-        useAuthStore.getState().setDeviceRemembered(false);
+        await setRememberedDevice();
       }
-      // Cinematic exit animation
       Animated.parallel([
         Animated.timing(successScale, {
           toValue: 0.95,
@@ -175,7 +333,7 @@ export default function LoginScreen() {
           useNativeDriver: true,
         }),
       ]).start(() => {
-        router.replace('/dashboard');
+        router.replace('/(tabs)/dashboard');
       });
     } else {
       triggerShake();
@@ -207,23 +365,26 @@ export default function LoginScreen() {
 
       if (result.success) {
         trigger('success');
-        // Remember device on biometric login
-        useAuthStore.getState().setDeviceRemembered(true);
-        await useAuthStore.getState().login('Achu27', 'Achu');
-        Animated.parallel([
-          Animated.timing(successScale, {
-            toValue: 0.95,
-            duration: 300,
-            useNativeDriver: true,
-          }),
-          Animated.timing(successOpacity, {
-            toValue: 0,
-            duration: 400,
-            useNativeDriver: true,
-          }),
-        ]).start(() => {
-          router.replace('/(tabs)/dashboard');
-        });
+        const success = await biometricLogin();
+        if (success) {
+          await setRememberedDevice();
+          Animated.parallel([
+            Animated.timing(successScale, {
+              toValue: 0.95,
+              duration: 300,
+              useNativeDriver: true,
+            }),
+            Animated.timing(successOpacity, {
+              toValue: 0,
+              duration: 400,
+              useNativeDriver: true,
+            }),
+          ]).start(() => {
+            router.replace('/(tabs)/dashboard');
+          });
+        } else {
+          triggerShake();
+        }
       }
     } catch (e) {
       console.error('Biometric auth error:', e);
@@ -238,11 +399,11 @@ export default function LoginScreen() {
 
   return (
     <View style={styles.container}>
-      <StatusBar style="light" />
+      <StatusBar style={isDark ? 'light' : 'dark'} />
 
       {/* Animated Background */}
       <LinearGradient
-        colors={['#050510', '#0A0A1A', '#0D0D20', '#050510']}
+        colors={gradientColors}
         style={StyleSheet.absoluteFill}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
@@ -341,9 +502,11 @@ export default function LoginScreen() {
                   glowColor={error ? Colors.error : undefined}
                 >
                   <View style={styles.cardContent}>
-                    <Text style={styles.cardTitle}>Welcome Back</Text>
+                    <Text style={styles.cardTitle}>
+                      {isRegistering ? 'Create Account' : 'Welcome Back'}
+                    </Text>
                     <Text style={styles.cardSubtitle}>
-                      Sign in to access your accounts
+                      {isRegistering ? 'Set up your Kairo banking assistant' : 'Sign in to access your accounts'}
                     </Text>
 
                     <View style={styles.inputsContainer}>
@@ -386,6 +549,24 @@ export default function LoginScreen() {
                       />
                     </View>
 
+                    {isRegistering && (
+                      <PremiumInput
+                        label="Confirm Password"
+                        value={confirmPassword}
+                        onChangeText={setConfirmPassword}
+                        placeholder="Re-enter your password"
+                        secureTextEntry
+                        error={!!error}
+                        icon={
+                          <Lock
+                            size={18}
+                            color={error ? Colors.error : Colors.textTertiary}
+                            strokeWidth={1.8}
+                          />
+                        }
+                      />
+                    )}
+
                     {/* Remember Device Toggle */}
                     <Pressable
                       onPress={() => setRememberDevice(!rememberDevice)}
@@ -409,7 +590,7 @@ export default function LoginScreen() {
 
                     {/* Login Button */}
                     <PremiumButton
-                      title="Sign In Securely"
+                      title={isRegistering ? 'Create Account' : 'Sign In Securely'}
                       onPress={handleLogin}
                       loading={isLoading}
                       icon={
@@ -466,152 +647,3 @@ export default function LoginScreen() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#050510',
-  },
-  contentWrapper: {
-    flex: 1,
-  },
-  keyboardView: {
-    flex: 1,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.xl,
-    paddingVertical: Spacing['3xl'],
-  },
-
-  // Logo
-  logoSection: {
-    alignItems: 'center',
-    marginBottom: Spacing['3xl'],
-  },
-  logoMark: {
-    marginBottom: Spacing.lg,
-  },
-  logoImage: {
-    width: 80,
-    height: 80,
-    borderRadius: 20,
-  },
-  logoText: {
-    fontFamily: Typography.fontFamily.black,
-    fontSize: Typography.fontSize['4xl'],
-    color: Colors.textPrimary,
-    letterSpacing: Typography.letterSpacing.widest + 4,
-  },
-  logoSubtext: {
-    fontFamily: Typography.fontFamily.medium,
-    fontSize: Typography.fontSize.xs,
-    color: Colors.textMuted,
-    letterSpacing: Typography.letterSpacing.widest + 2,
-    marginTop: Spacing.xs,
-  },
-
-  // Login Card
-  loginCard: {
-    borderWidth: 0,
-  },
-  cardContent: {
-    padding: Spacing.xl,
-  },
-  cardTitle: {
-    fontFamily: Typography.fontFamily.bold,
-    fontSize: Typography.fontSize.xl,
-    color: Colors.textPrimary,
-    marginBottom: Spacing.xs,
-  },
-  cardSubtitle: {
-    fontFamily: Typography.fontFamily.regular,
-    fontSize: Typography.fontSize.sm,
-    color: Colors.textTertiary,
-    marginBottom: Spacing.xl,
-  },
-  inputsContainer: {
-    marginBottom: Spacing.sm,
-  },
-
-  // Remember Device
-  rememberRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: Spacing.xl,
-  },
-  toggleTrack: {
-    width: 40,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: 'rgba(255, 255, 255, 0.10)',
-    padding: 2,
-    justifyContent: 'center',
-  },
-  toggleTrackActive: {
-    backgroundColor: Colors.accentBlue,
-  },
-  toggleThumb: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: Colors.textTertiary,
-  },
-  toggleThumbActive: {
-    alignSelf: 'flex-end',
-    backgroundColor: Colors.textPrimary,
-  },
-  rememberText: {
-    fontFamily: Typography.fontFamily.regular,
-    fontSize: Typography.fontSize.sm,
-    color: Colors.textSecondary,
-    marginLeft: Spacing.md,
-  },
-
-  // Login Button
-  loginButton: {
-    marginBottom: Spacing.lg,
-  },
-
-  // Separator
-  separator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: Spacing.lg,
-  },
-  separatorLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: Colors.divider,
-  },
-  separatorText: {
-    fontFamily: Typography.fontFamily.regular,
-    fontSize: Typography.fontSize.sm,
-    color: Colors.textMuted,
-    marginHorizontal: Spacing.base,
-  },
-
-  // Footer
-  footer: {
-    alignItems: 'center',
-    marginTop: Spacing['2xl'],
-  },
-  securityBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 255, 153, 0.06)',
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.base,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(0, 255, 153, 0.10)',
-  },
-  securityText: {
-    fontFamily: Typography.fontFamily.medium,
-    fontSize: Typography.fontSize.xs,
-    color: Colors.success,
-    marginLeft: Spacing.sm,
-    letterSpacing: Typography.letterSpacing.wide,
-  },
-});

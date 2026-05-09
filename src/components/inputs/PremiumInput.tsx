@@ -3,7 +3,7 @@
  * Elegant input field with focus states, error states, and icon support
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   TextInput,
@@ -13,7 +13,8 @@ import {
   Pressable,
 } from 'react-native';
 import { Eye, EyeOff } from 'lucide-react-native';
-import { Colors, Typography, Spacing, BorderRadius } from '../../theme';
+import { Typography, Spacing, BorderRadius } from '../../theme';
+import { useThemeColors } from '../../hooks/useTheme';
 
 interface PremiumInputProps {
   label: string;
@@ -40,10 +41,66 @@ export const PremiumInput: React.FC<PremiumInputProps> = ({
   autoCapitalize = 'none',
   style,
 }) => {
+  const { Colors } = useThemeColors();
   const [isFocused, setIsFocused] = useState(false);
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
 
   const actualSecure = secureTextEntry && !isPasswordVisible;
+
+  const styles = useMemo(() => StyleSheet.create({
+    wrapper: {
+      marginBottom: Spacing.lg,
+    },
+    label: {
+      fontFamily: Typography.fontFamily.medium,
+      fontSize: Typography.fontSize.sm,
+      color: Colors.textSecondary,
+      marginBottom: Spacing.sm,
+      letterSpacing: Typography.letterSpacing.wide,
+      textTransform: 'uppercase',
+    },
+    labelError: {
+      color: Colors.error,
+    },
+    inputContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: Colors.cardSurface,
+      borderRadius: BorderRadius.lg,
+      borderWidth: 1.5,
+      borderColor: Colors.cardBorder,
+      paddingHorizontal: Spacing.base,
+      height: 56,
+    },
+    inputFocused: {
+      borderColor: Colors.accentBlue,
+      backgroundColor: Colors.accentBlueSoft,
+    },
+    inputError: {
+      borderColor: Colors.error,
+      backgroundColor: Colors.errorSoft,
+    },
+    iconContainer: {
+      marginRight: Spacing.md,
+    },
+    input: {
+      flex: 1,
+      fontFamily: Typography.fontFamily.regular,
+      fontSize: Typography.fontSize.base,
+      color: Colors.textPrimary,
+      height: '100%',
+    },
+    eyeButton: {
+      padding: Spacing.xs,
+      marginLeft: Spacing.sm,
+    },
+    errorText: {
+      fontFamily: Typography.fontFamily.regular,
+      fontSize: Typography.fontSize.sm,
+      color: Colors.error,
+      marginTop: Spacing.sm,
+    },
+  }), [Colors]);
 
   return (
     <View style={[styles.wrapper, style]}>
@@ -90,58 +147,3 @@ export const PremiumInput: React.FC<PremiumInputProps> = ({
     </View>
   );
 };
-
-const styles = StyleSheet.create({
-  wrapper: {
-    marginBottom: Spacing.lg,
-  },
-  label: {
-    fontFamily: Typography.fontFamily.medium,
-    fontSize: Typography.fontSize.sm,
-    color: Colors.textSecondary,
-    marginBottom: Spacing.sm,
-    letterSpacing: Typography.letterSpacing.wide,
-    textTransform: 'uppercase',
-  },
-  labelError: {
-    color: Colors.error,
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.04)',
-    borderRadius: BorderRadius.lg,
-    borderWidth: 1.5,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    paddingHorizontal: Spacing.base,
-    height: 56,
-  },
-  inputFocused: {
-    borderColor: Colors.accentBlue,
-    backgroundColor: 'rgba(46, 91, 255, 0.06)',
-  },
-  inputError: {
-    borderColor: Colors.error,
-    backgroundColor: 'rgba(255, 77, 109, 0.06)',
-  },
-  iconContainer: {
-    marginRight: Spacing.md,
-  },
-  input: {
-    flex: 1,
-    fontFamily: Typography.fontFamily.regular,
-    fontSize: Typography.fontSize.base,
-    color: Colors.textPrimary,
-    height: '100%',
-  },
-  eyeButton: {
-    padding: Spacing.xs,
-    marginLeft: Spacing.sm,
-  },
-  errorText: {
-    fontFamily: Typography.fontFamily.regular,
-    fontSize: Typography.fontSize.sm,
-    color: Colors.error,
-    marginTop: Spacing.sm,
-  },
-});

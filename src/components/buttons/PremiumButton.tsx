@@ -3,7 +3,7 @@
  * Animated button with gradient, glow, and press effects
  */
 
-import React, { useRef } from 'react';
+import React, { useRef, useMemo } from 'react';
 import {
   Pressable,
   Text,
@@ -13,7 +13,8 @@ import {
   ViewStyle,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Colors, Typography, Spacing, BorderRadius, Shadows } from '../../theme';
+import { Typography, Spacing, BorderRadius, Shadows } from '../../theme';
+import { useThemeColors } from '../../hooks/useTheme';
 
 interface PremiumButtonProps {
   title: string;
@@ -34,7 +35,61 @@ export const PremiumButton: React.FC<PremiumButtonProps> = ({
   icon,
   style,
 }) => {
+  const { Colors } = useThemeColors();
   const scale = useRef(new Animated.Value(1)).current;
+
+  const styles = useMemo(() => StyleSheet.create({
+    base: {
+      borderRadius: BorderRadius.lg,
+      overflow: 'hidden',
+    },
+    gradient: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: Spacing.base,
+      paddingHorizontal: Spacing['2xl'],
+      borderRadius: BorderRadius.lg,
+      minHeight: 56,
+    },
+    primaryText: {
+      fontFamily: Typography.fontFamily.semiBold,
+      fontSize: Typography.fontSize.base,
+      color: Colors.textPrimary,
+      letterSpacing: Typography.letterSpacing.wide,
+    },
+    secondary: {
+      backgroundColor: Colors.cardSurface,
+      borderWidth: 1,
+      borderColor: Colors.cardBorder,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: Spacing.base,
+      paddingHorizontal: Spacing['2xl'],
+      minHeight: 56,
+    },
+    secondaryText: {
+      fontFamily: Typography.fontFamily.medium,
+      fontSize: Typography.fontSize.base,
+      color: Colors.textSecondary,
+    },
+    ghost: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: Spacing.md,
+      paddingHorizontal: Spacing.base,
+    },
+    ghostText: {
+      fontFamily: Typography.fontFamily.medium,
+      fontSize: Typography.fontSize.sm,
+      color: Colors.textTertiary,
+    },
+    disabled: {
+      opacity: 0.5,
+    },
+  }), [Colors]);
 
   const handlePressIn = () => {
     Animated.spring(scale, {
@@ -146,56 +201,3 @@ export const PremiumButton: React.FC<PremiumButtonProps> = ({
     </Pressable>
   );
 };
-
-const styles = StyleSheet.create({
-  base: {
-    borderRadius: BorderRadius.lg,
-    overflow: 'hidden',
-  },
-  gradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: Spacing.base,
-    paddingHorizontal: Spacing['2xl'],
-    borderRadius: BorderRadius.lg,
-    minHeight: 56,
-  },
-  primaryText: {
-    fontFamily: Typography.fontFamily.semiBold,
-    fontSize: Typography.fontSize.base,
-    color: Colors.textPrimary,
-    letterSpacing: Typography.letterSpacing.wide,
-  },
-  secondary: {
-    backgroundColor: Colors.cardSurface,
-    borderWidth: 1,
-    borderColor: Colors.cardBorder,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: Spacing.base,
-    paddingHorizontal: Spacing['2xl'],
-    minHeight: 56,
-  },
-  secondaryText: {
-    fontFamily: Typography.fontFamily.medium,
-    fontSize: Typography.fontSize.base,
-    color: Colors.textSecondary,
-  },
-  ghost: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.base,
-  },
-  ghostText: {
-    fontFamily: Typography.fontFamily.medium,
-    fontSize: Typography.fontSize.sm,
-    color: Colors.textTertiary,
-  },
-  disabled: {
-    opacity: 0.5,
-  },
-});

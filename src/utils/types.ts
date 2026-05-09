@@ -31,7 +31,8 @@ export type TransactionCategory =
   | 'investment'
   | 'subscription'
   | 'health'
-  | 'education';
+  | 'education'
+  | 'income';
 
 export interface Transaction {
   id: string;
@@ -61,22 +62,6 @@ export interface SpendingCategory {
   percentage: number;
   color: string;
   icon: string;
-}
-
-// AI types
-export interface ChatMessage {
-  id: string;
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-  timestamp: Date;
-  isStreaming?: boolean;
-  metadata?: Record<string, unknown>;
-}
-
-export interface AIContext {
-  activeAccountId: string;
-  activeAccountType: string;
-  recentTransactions: Transaction[];
 }
 
 // Wealth types

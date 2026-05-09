@@ -3,10 +3,11 @@
  * Premium SVG donut chart with stroke animations for portfolio allocation
  */
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import { View, StyleSheet, Animated, Text } from 'react-native';
 import Svg, { Circle, G } from 'react-native-svg';
-import { Colors, Typography } from '../../theme';
+import { Typography } from '../../theme';
+import { useThemeColors } from '../../hooks/useTheme';
 
 interface DataItem {
   value: number;
@@ -31,6 +32,7 @@ export const DonutChart: React.FC<DonutChartProps> = ({
   centerLabel,
   centerSublabel,
 }) => {
+  const { Colors } = useThemeColors();
   const radius = (size - strokeWidth) / 2;
   const circumference = radius * 2 * Math.PI;
   const total = data.reduce((sum, item) => sum + item.value, 0);
@@ -45,13 +47,37 @@ export const DonutChart: React.FC<DonutChartProps> = ({
     }).start();
   }, [animation]);
 
+  const styles = useMemo(() => StyleSheet.create({
+    container: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      position: 'relative',
+    },
+    centerContent: {
+      position: 'absolute',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    centerLabel: {
+      fontFamily: Typography.fontFamily.bold,
+      fontSize: Typography.fontSize.xl,
+      color: Colors.textPrimary,
+    },
+    centerSublabel: {
+      fontFamily: Typography.fontFamily.medium,
+      fontSize: Typography.fontSize.xs,
+      color: Colors.textTertiary,
+      marginTop: 4,
+    },
+  }), [Colors]);
+
   let currentOffset = 0;
 
   return (
     <View style={styles.container}>
       <Svg width={size} height={size}>
         <G rotation="-90" origin={`${size / 2}, ${size / 2}`}>
-          {data.map((item, index) => {
+          {data.map((item) => {
             const percentage = item.value / total;
             const strokeDashoffset = circumference - percentage * circumference;
             const offset = currentOffset;
@@ -64,7 +90,7 @@ export const DonutChart: React.FC<DonutChartProps> = ({
 
             return (
               <AnimatedCircle
-                key={index}
+                key={item.label}
                 cx={size / 2}
                 cy={size / 2}
                 r={radius}
@@ -88,27 +114,3 @@ export const DonutChart: React.FC<DonutChartProps> = ({
     </View>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  centerContent: {
-    position: 'absolute',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  centerLabel: {
-    fontFamily: Typography.fontFamily.bold,
-    fontSize: Typography.fontSize.xl,
-    color: Colors.textPrimary,
-  },
-  centerSublabel: {
-    fontFamily: Typography.fontFamily.medium,
-    fontSize: Typography.fontSize.xs,
-    color: Colors.textTertiary,
-    marginTop: 4,
-  },
-});

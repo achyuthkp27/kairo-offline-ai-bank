@@ -4,3 +4,5 @@
 
 export * from './formatters';
 export * from './types';
+export * from './logger';
+export * from './validators';

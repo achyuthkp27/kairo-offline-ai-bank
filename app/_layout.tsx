@@ -3,7 +3,7 @@
  * Loads fonts, providers, and manages the root navigation stack
  */
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useCallback, useMemo } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { Stack } from 'expo-router';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
@@ -17,11 +17,15 @@ import {
   Inter_900Black,
 } from '@expo-google-fonts/inter';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { Colors } from '../src/theme';
+import * as Network from 'expo-network';
+import { Typography } from '../src/theme';
 import { initDatabase } from '../src/db/database';
 import { ErrorBoundary } from '../src/components/common/ErrorBoundary';
+import { useUIStore } from '../src/store';
+import { useThemeColors } from '../src/hooks/useTheme';
 
 export default function RootLayout() {
+  const { Colors, isDark } = useThemeColors();
   const [fontsLoaded] = useFonts({
     Inter_400Regular,
     Inter_500Medium,
@@ -31,6 +35,19 @@ export default function RootLayout() {
     Inter_900Black,
   });
 
+  const styles = useMemo(() => StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: Colors.background,
+    },
+    loadingContainer: {
+      flex: 1,
+      backgroundColor: Colors.background,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+  }), [Colors]);
+
   useEffect(() => {
     initDatabase().then(() => {
       setTimeout(() => {
@@ -39,13 +56,23 @@ export default function RootLayout() {
         });
       }, 5000);
     });
+
+    const checkNetwork = async () => {
+      const state = await Network.getNetworkStateAsync();
+      useUIStore.getState().setOnline(state.isConnected ?? false);
+    };
+    checkNetwork();
+    const unsubscribe = Network.addNetworkStateListener((state) => {
+      useUIStore.getState().setOnline(state.isConnected ?? false);
+    });
+    return () => unsubscribe.remove();
   }, []);
 
   if (!fontsLoaded) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={Colors.accentBlue} />
-        <StatusBar style="light" />
+        <StatusBar style={isDark ? 'light' : 'dark'} />
       </View>
     );
   }
@@ -53,7 +80,7 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={styles.container}>
       <ErrorBoundary>
-        <StatusBar style="light" />
+        <StatusBar style={isDark ? 'light' : 'dark'} />
         <Stack
           screenOptions={{
             headerShown: false,
@@ -74,16 +101,3 @@ export default function RootLayout() {
     </GestureHandlerRootView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  loadingContainer: {
-    flex: 1,
-    backgroundColor: Colors.background,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-});

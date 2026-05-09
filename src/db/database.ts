@@ -6,6 +6,8 @@
 import * as SQLite from 'expo-sqlite';
 import { MOCK_TRANSACTIONS } from '../utils/mockData';
 import { useAccountStore } from '../store';
+import { logger } from '../utils/logger';
+import { runMigrations } from './migrations';
 
 export interface TransactionRow {
   id: string;
@@ -28,6 +30,18 @@ export const getDb = async () => {
     db = await SQLite.openDatabaseAsync('kairo_ai_bank.db');
   }
   return db;
+};
+
+/**
+ * Execute multiple writes atomically.
+ */
+export const runInTransaction = async <T>(fn: (database: SQLite.SQLiteDatabase) => Promise<T>): Promise<T> => {
+  const database = await getDb();
+  let result: T | undefined;
+  await database.withTransactionAsync(async () => {
+    result = await fn(database);
+  });
+  return result as T;
 };
 
 export const initDatabase = async () => {
@@ -66,7 +80,12 @@ export const initDatabase = async () => {
         id TEXT PRIMARY KEY,
         label TEXT NOT NULL,
         value REAL NOT NULL,
-        category TEXT NOT NULL
+        category TEXT NOT NULL,
+        allocation REAL DEFAULT 0,
+        change1D REAL DEFAULT 0,
+        change1Y REAL DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
       );
 
       CREATE TABLE IF NOT EXISTS ai_memory (
@@ -78,12 +97,84 @@ export const initDatabase = async () => {
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS notification_preferences (
+        id TEXT PRIMARY KEY,
+        category TEXT NOT NULL UNIQUE,
+        enabled INTEGER DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS budgets (
+        id TEXT PRIMARY KEY,
+        category TEXT NOT NULL UNIQUE,
+        limit_amount REAL NOT NULL,
+        spent_amount REAL DEFAULT 0,
+        month INTEGER NOT NULL,
+        year INTEGER NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS savings_goals (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        targetAmount REAL NOT NULL,
+        currentAmount REAL DEFAULT 0,
+        deadline INTEGER NOT NULL,
+        category TEXT NOT NULL,
+        monthlyContribution REAL NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        isCompleted INTEGER DEFAULT 0
+      );
+
+      CREATE TABLE IF NOT EXISTS bills (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        amount REAL NOT NULL,
+        dueDate INTEGER NOT NULL,
+        category TEXT NOT NULL,
+        isRecurring INTEGER DEFAULT 0,
+        recurMonthDays TEXT,
+        isPaid INTEGER DEFAULT 0,
+        paidAt INTEGER,
+        reminderDays INTEGER DEFAULT 3,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS debts (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL,
+        initialAmount REAL NOT NULL,
+        currentBalance REAL NOT NULL,
+        interestRate REAL NOT NULL,
+        minimumPayment REAL NOT NULL,
+        dueDate INTEGER NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_transactions_timestamp ON transactions(timestamp DESC);
+      CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category);
+      CREATE INDEX IF NOT EXISTS idx_transactions_account_source ON transactions(accountSource);
+      CREATE INDEX IF NOT EXISTS idx_ai_memory_updated_at ON ai_memory(updated_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_ai_memory_category ON ai_memory(category);
+      CREATE INDEX IF NOT EXISTS idx_budgets_month_year ON budgets(month, year);
+      CREATE INDEX IF NOT EXISTS idx_savings_goals_deadline ON savings_goals(deadline);
+      CREATE INDEX IF NOT EXISTS idx_bills_due_date ON bills(dueDate);
+      CREATE INDEX IF NOT EXISTS idx_debts_due_date ON debts(dueDate);
     `);
+
+    await runMigrations(database);
 
     // 1. Check & Seed Accounts
     const accountCheck = await database.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM accounts');
     if (accountCheck && accountCheck.count === 0) {
-      console.log('[DB] Seeding accounts...');
+      logger.info('Seeding accounts...');
       const accounts = useAccountStore.getState().accounts;
       for (const acc of accounts) {
         await database.runAsync(
@@ -96,7 +187,7 @@ export const initDatabase = async () => {
     // 2. Check & Seed Transactions
     const txnCheck = await database.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM transactions');
     if (txnCheck && txnCheck.count === 0) {
-      console.log('[DB] Seeding transactions...');
+      logger.info('Seeding transactions...');
       // Use a simpler loop without heavy embedding logic for the first boot to ensure reliability
       for (const txn of MOCK_TRANSACTIONS) {
         await database.runAsync(
@@ -109,7 +200,7 @@ export const initDatabase = async () => {
     // 3. Check & Seed Portfolio
     const portfolioCheck = await database.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM portfolio');
     if (portfolioCheck && portfolioCheck.count === 0) {
-      console.log('[DB] Seeding portfolio...');
+      logger.info('Seeding portfolio...');
       const portfolioData = [
         { id: 'p1', label: 'Indian Equities', value: 2150000, category: 'stocks' },
         { id: 'p2', label: 'Mutual Funds', value: 850000, category: 'funds' },
@@ -117,16 +208,58 @@ export const initDatabase = async () => {
         { id: 'p4', label: 'Crypto', value: 360500, category: 'crypto' },
       ];
       for (const item of portfolioData) {
+        const now = Date.now();
         await database.runAsync(
-          'INSERT INTO portfolio (id, label, value, category) VALUES (?, ?, ?, ?)',
-          [item.id, item.label, item.value, item.category]
+          'INSERT INTO portfolio (id, label, value, category, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+          [item.id, item.label, item.value, item.category, now, now]
         );
       }
     }
 
-    console.log('Database sync/seeding completed');
+    // 4. Seed Default Notification Preferences
+    const notifCheck = await database.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM notification_preferences');
+    if (notifCheck && notifCheck.count === 0) {
+      logger.info('Seeding notification preferences...');
+      const defaultPrefs = [
+        { id: 'notif_1', category: 'transaction_alerts', enabled: 1 },
+        { id: 'notif_2', category: 'balance_warnings', enabled: 1 },
+        { id: 'notif_3', category: 'payment_reminders', enabled: 1 },
+      ];
+      const now = Date.now();
+      for (const pref of defaultPrefs) {
+        await database.runAsync(
+          'INSERT INTO notification_preferences (id, category, enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+          [pref.id, pref.category, pref.enabled, now, now]
+        );
+      }
+    }
+
+    // 5. Seed Default Budgets
+    const budgetCheck = await database.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM budgets');
+    if (budgetCheck && budgetCheck.count === 0) {
+      logger.info('Seeding budgets...');
+      const now = Date.now();
+      const currentMonth = new Date().getMonth() + 1;
+      const currentYear = new Date().getFullYear();
+      const defaultBudgets = [
+        { id: 'budget_1', category: 'dining', limit: 10000 },
+        { id: 'budget_2', category: 'shopping', limit: 15000 },
+        { id: 'budget_3', category: 'transport', limit: 5000 },
+        { id: 'budget_4', category: 'bills', limit: 8000 },
+        { id: 'budget_5', category: 'entertainment', limit: 5000 },
+      ];
+      for (const bgt of defaultBudgets) {
+        await database.runAsync(
+          'INSERT INTO budgets (id, category, limit_amount, spent_amount, month, year, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+          [bgt.id, bgt.category, bgt.limit, 0, currentMonth, currentYear, now, now]
+        );
+      }
+    }
+
+    logger.info('Database sync/seeding completed');
   } catch (error) {
-    console.error('Error seeding database:', error);
+    logger.error('Error seeding database', error);
+    throw error;
   }
 };
 
@@ -134,15 +267,15 @@ export const initDatabase = async () => {
  * AI Retrieval Hooks:
  * Used later by the AI assistant to query the user's financial state locally.
  */
-export const fetchRecentTransactions = async (limit: number = 5) => {
+export const fetchRecentTransactions = async (limit: number = 5): Promise<TransactionRow[]> => {
   const database = await getDb();
-  return await database.getAllAsync(
+  return await database.getAllAsync<TransactionRow>(
     'SELECT * FROM transactions ORDER BY timestamp DESC LIMIT ?',
     [limit]
   );
 };
 
-export const fetchTotalNetWorth = async () => {
+export const fetchTotalNetWorth = async (): Promise<number> => {
   const database = await getDb();
   const accountsResult = await database.getFirstAsync<{ total: number }>(
     'SELECT SUM(balance) as total FROM accounts'
@@ -154,13 +287,23 @@ export const fetchTotalNetWorth = async () => {
   return (accountsResult?.total || 0) + (portfolioResult?.total || 0);
 };
 
-export const fetchCategorySpending = async (days: number = 30) => {
+export const fetchCategorySpending = async (days: number = 30): Promise<{ category: string; total: number }[]> => {
   const database = await getDb();
   const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
   
-  return await database.getAllAsync(
+  return await database.getAllAsync<{ category: string; total: number }>(
     'SELECT category, SUM(amount) as total FROM transactions WHERE type = ? AND timestamp >= ? GROUP BY category ORDER BY total DESC',
     ['debit', cutoff]
+  );
+};
+
+export const fetchDailySpending = async (days: number = 7): Promise<{ date: string; total: number }[]> => {
+  const database = await getDb();
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+  
+  return await database.getAllAsync<{ date: string; total: number }>(
+    "SELECT strftime('%Y-%m-%d', timestamp / 1000, 'unixepoch') as date, SUM(amount) as total FROM transactions WHERE type = 'debit' AND timestamp >= ? GROUP BY date ORDER BY date ASC",
+    [cutoff]
   );
 };
 

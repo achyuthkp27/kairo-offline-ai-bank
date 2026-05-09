@@ -9,23 +9,13 @@ import {
   fetchRecentTransactions,
   fetchTotalNetWorth,
   fetchCategorySpending,
+  fetchDailySpending,
   getDb,
+  TransactionRow,
 } from '../db/database';
 import { Transaction } from '../utils/types';
 
 /** Raw row shape coming back from SQLite */
-interface TransactionRow {
-  id: string;
-  merchantName: string;
-  category: string;
-  type: string;
-  amount: number;
-  currency: string;
-  timestamp: number;
-  accountSource: string;
-  status: string;
-}
-
 interface PortfolioRow {
   id: string;
   label: string;
@@ -33,22 +23,19 @@ interface PortfolioRow {
   category: string;
 }
 
-interface CategorySpendingRow {
-  category: string;
-  total: number;
-}
-
 // ─── Transactions ────────────────────────────────────────
 
 export const useTransactions = (limit: number = 20) => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setIsLoading(true);
+    setError(null);
     try {
-      const rows = (await fetchRecentTransactions(limit)) as TransactionRow[];
-      const mapped: Transaction[] = rows.map((r) => ({
+      const rows = await fetchRecentTransactions(limit);
+      const mapped: Transaction[] = rows.map((r: TransactionRow) => ({
         id: r.id,
         merchantName: r.merchantName,
         category: r.category as Transaction['category'],
@@ -66,6 +53,8 @@ export const useTransactions = (limit: number = 20) => {
       }));
       setTransactions(mapped);
     } catch (e) {
+      const message = e instanceof Error ? e.message : 'Failed to load transactions';
+      setError(message);
       console.error('[useTransactions] Failed to load:', e);
     } finally {
       setIsLoading(false);
@@ -76,7 +65,7 @@ export const useTransactions = (limit: number = 20) => {
     load();
   }, [load]);
 
-  return { transactions, isLoading, refresh: load };
+  return { transactions, isLoading, error, refresh: load };
 };
 
 // ─── Net Worth ───────────────────────────────────────────
@@ -84,13 +73,17 @@ export const useTransactions = (limit: number = 20) => {
 export const useNetWorth = () => {
   const [netWorth, setNetWorth] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setIsLoading(true);
+    setError(null);
     try {
       const total = await fetchTotalNetWorth();
       setNetWorth(total);
     } catch (e) {
+      const message = e instanceof Error ? e.message : 'Failed to load net worth';
+      setError(message);
       console.error('[useNetWorth] Failed to load:', e);
     } finally {
       setIsLoading(false);
@@ -101,7 +94,7 @@ export const useNetWorth = () => {
     load();
   }, [load]);
 
-  return { netWorth, isLoading, refresh: load };
+  return { netWorth, isLoading, error, refresh: load };
 };
 
 // ─── Portfolio ───────────────────────────────────────────
@@ -116,16 +109,20 @@ export interface PortfolioItem {
 export const usePortfolio = () => {
   const [portfolio, setPortfolio] = useState<PortfolioItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setIsLoading(true);
+    setError(null);
     try {
       const database = await getDb();
-      const rows = (await database.getAllAsync(
+      const rows = await database.getAllAsync<PortfolioRow>(
         'SELECT * FROM portfolio ORDER BY value DESC'
-      )) as PortfolioRow[];
+      );
       setPortfolio(rows);
     } catch (e) {
+      const message = e instanceof Error ? e.message : 'Failed to load portfolio';
+      setError(message);
       console.error('[usePortfolio] Failed to load:', e);
     } finally {
       setIsLoading(false);
@@ -136,7 +133,7 @@ export const usePortfolio = () => {
     load();
   }, [load]);
 
-  return { portfolio, isLoading, refresh: load };
+  return { portfolio, isLoading, error, refresh: load };
 };
 
 // ─── Category Spending ───────────────────────────────────
@@ -150,14 +147,22 @@ export const useCategorySpending = (days: number = 7) => {
   const [spending, setSpending] = useState<CategorySpending[]>([]);
   const [totalSpent, setTotalSpent] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setIsLoading(true);
+    setError(null);
     try {
-      const rows = (await fetchCategorySpending(days)) as CategorySpendingRow[];
-      setSpending(rows);
-      setTotalSpent(rows.reduce((sum, r) => sum + r.total, 0));
+      const rows = await fetchCategorySpending(days);
+      const mapped: CategorySpending[] = rows.map((r: { category: string; total: number }) => ({
+        category: r.category,
+        total: r.total,
+      }));
+      setSpending(mapped);
+      setTotalSpent(mapped.reduce((sum, r) => sum + r.total, 0));
     } catch (e) {
+      const message = e instanceof Error ? e.message : 'Failed to load category spending';
+      setError(message);
       console.error('[useCategorySpending] Failed to load:', e);
     } finally {
       setIsLoading(false);
@@ -168,5 +173,44 @@ export const useCategorySpending = (days: number = 7) => {
     load();
   }, [load]);
 
-  return { spending, totalSpent, isLoading, refresh: load };
+  return { spending, totalSpent, isLoading, error, refresh: load };
+};
+
+export const useDailySpending = (days: number = 7) => {
+  const [data, setData] = useState<{ day: string; value: number }[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const rows = await fetchDailySpending(days);
+      
+      // Map to last 7 days including empty days
+      const daysArr = [];
+      for (let i = days - 1; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const dateStr = d.toISOString().split('T')[0];
+        const dayLabel = d.toLocaleDateString('en-US', { weekday: 'short' }).charAt(0);
+        
+        const match = rows.find(r => r.date === dateStr);
+        daysArr.push({
+          day: dayLabel,
+          value: match ? match.total : 0
+        });
+      }
+      
+      setData(daysArr);
+    } catch (e) {
+      console.error('[useDailySpending] Failed to load:', e);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [days]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  return { data, isLoading, refresh: load };
 };

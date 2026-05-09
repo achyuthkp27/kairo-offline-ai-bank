@@ -6,7 +6,7 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
-import { Colors } from '../../theme';
+import { useThemeColors } from '../../hooks/useTheme';
 
 interface SparklineProps {
   data: number[];
@@ -20,9 +20,12 @@ export const Sparkline: React.FC<SparklineProps> = ({
   data,
   width = 100,
   height = 30,
-  color = Colors.success,
+  color,
   strokeWidth = 2,
 }) => {
+  const { Colors } = useThemeColors();
+  const defaultColor = color || Colors.success;
+
   if (!data || data.length === 0) return null;
 
   const maxVal = Math.max(...data);
@@ -48,7 +51,7 @@ export const Sparkline: React.FC<SparklineProps> = ({
         <Path
           d={d}
           fill="none"
-          stroke={color}
+          stroke={defaultColor}
           strokeWidth={strokeWidth}
           strokeLinecap="round"
           strokeLinejoin="round"

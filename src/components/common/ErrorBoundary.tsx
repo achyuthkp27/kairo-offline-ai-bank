@@ -4,7 +4,7 @@
  * instead of a white crash screen.
  */
 
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import React, { Component, ComponentType, ErrorInfo, ReactNode } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Colors, Typography, Spacing } from '../../theme';
 
@@ -56,6 +56,16 @@ export class ErrorBoundary extends Component<Props, State> {
 
     return this.props.children;
   }
+}
+
+export function withErrorBoundary<P extends object>(Component: ComponentType<P>) {
+  return function WithErrorBoundary(props: P) {
+    return (
+      <ErrorBoundary>
+        <Component {...props} />
+      </ErrorBoundary>
+    );
+  };
 }
 
 const styles = StyleSheet.create({

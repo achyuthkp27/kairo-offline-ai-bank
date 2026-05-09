@@ -6,12 +6,36 @@
 
 import { create } from 'zustand';
 
+export type AIActionType = 
+  | 'navigate' 
+  | 'transfer' 
+  | 'freeze' 
+  | 'search'
+  | 'setBudget'
+  | 'createGoal'
+  | 'payBill'
+  | 'analyze'
+  | 'advice'
+  | 'view_returns'
+  | 'view_investments'
+  | 'view_portfolio'
+  | 'view_budgets'
+  | 'view_goals'
+  | 'view_debts'
+  | 'view_bills'
+  | 'close';
+
+export interface AIAction {
+  action: AIActionType;
+  details?: string;
+}
+
 export interface ChatMessage {
   id: string;
   text: string;
-  sender: 'user' | 'bot';
+  sender: 'user' | 'assistant';
   isStreaming?: boolean;
-  action?: any;
+  action?: AIAction | null;
 }
 
 interface ChatState {

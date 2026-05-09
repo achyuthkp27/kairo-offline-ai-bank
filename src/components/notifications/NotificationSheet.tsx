@@ -3,7 +3,7 @@
  * Premium glassmorphism sheet for managing alerts and insights
  */
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -12,24 +12,24 @@ import {
   Animated,
   Dimensions,
   ScrollView,
-  Platform,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { X, Bell, CheckCheck, Trash2, Zap, Shield, CreditCard, Info } from 'lucide-react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 
-import { Colors, Typography, Spacing } from '../../theme';
-import { useHaptics } from '../../hooks';
+import { Typography, Spacing } from '../../theme';
+import { useHaptics, useThemeColors } from '../../hooks';
 import { useNotificationStore, KairoNotification } from '../../store/notificationStore';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+type ThemeColors = ReturnType<typeof useThemeColors>['Colors'];
 
 interface NotificationSheetProps {
   isVisible: boolean;
   onClose: () => void;
 }
 
-const NotificationIcon = ({ type }: { type: KairoNotification['type'] }) => {
+const NotificationIcon = ({ type, Colors }: { type: KairoNotification['type']; Colors: ThemeColors }) => {
   switch (type) {
     case 'insight': return <Zap size={18} color={Colors.accentCyan} />;
     case 'security': return <Shield size={18} color={Colors.accentBlue} />;
@@ -40,10 +40,156 @@ const NotificationIcon = ({ type }: { type: KairoNotification['type'] }) => {
 
 export const NotificationSheet: React.FC<NotificationSheetProps> = ({ isVisible, onClose }) => {
   const { trigger } = useHaptics();
+  const { Colors: themeColors } = useThemeColors();
   const { notifications, markAsRead, markAllAsRead, clearNotifications } = useNotificationStore();
-  
+
   const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  const styles = useMemo(() => StyleSheet.create({
+    backdrop: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: 'rgba(0,0,0,0.7)',
+    },
+    sheet: {
+      position: 'absolute',
+      bottom: 0,
+      left: 0,
+      right: 0,
+      height: SCREEN_HEIGHT * 0.7,
+      borderTopLeftRadius: 32,
+      borderTopRightRadius: 32,
+      overflow: 'hidden',
+      backgroundColor: themeColors.background + 'E6',
+      borderTopWidth: 1,
+      borderColor: themeColors.divider,
+    },
+    header: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: Spacing.xl,
+      paddingVertical: Spacing.lg,
+      borderBottomWidth: 1,
+      borderColor: themeColors.divider,
+    },
+    headerLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.md,
+    },
+    iconCircle: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: themeColors.accentBlueSoft,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    headerTitle: {
+      fontFamily: Typography.fontFamily.bold,
+      fontSize: Typography.fontSize.lg,
+      color: themeColors.textPrimary,
+    },
+    headerActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.sm,
+    },
+    actionBtn: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    closeBtn: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: themeColors.cardSurface,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginLeft: 4,
+    },
+    listContent: {
+      padding: Spacing.lg,
+      paddingBottom: 40,
+    },
+    notificationItem: {
+      flexDirection: 'row',
+      padding: Spacing.lg,
+      borderRadius: 20,
+      marginBottom: Spacing.md,
+      backgroundColor: themeColors.cardSurface,
+      borderWidth: 1,
+      borderColor: 'transparent',
+    },
+    unreadItem: {
+      backgroundColor: themeColors.accentBlueSoft,
+      borderColor: themeColors.accentBlueGlow,
+    },
+    typeIcon: {
+      width: 40,
+      height: 40,
+      borderRadius: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: Spacing.md,
+      backgroundColor: themeColors.backgroundTertiary,
+    },
+    notifBody: {
+      flex: 1,
+    },
+    notifHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 4,
+    },
+    notifTitle: {
+      fontFamily: Typography.fontFamily.bold,
+      fontSize: 15,
+      color: themeColors.textPrimary,
+    },
+    unreadDot: {
+      width: 6,
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: themeColors.accentBlue,
+    },
+    notifMessage: {
+      fontFamily: Typography.fontFamily.regular,
+      fontSize: 13,
+      color: themeColors.textSecondary,
+      lineHeight: 18,
+      marginBottom: 8,
+    },
+    notifTime: {
+      fontFamily: Typography.fontFamily.medium,
+      fontSize: 11,
+      color: themeColors.textMuted,
+    },
+    emptyState: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 80,
+    },
+    emptyTitle: {
+      fontFamily: Typography.fontFamily.bold,
+      fontSize: Typography.fontSize.lg,
+      color: themeColors.textPrimary,
+      marginTop: Spacing.lg,
+      marginBottom: 8,
+    },
+    emptyText: {
+      fontFamily: Typography.fontFamily.regular,
+      fontSize: Typography.fontSize.sm,
+      color: themeColors.textTertiary,
+      textAlign: 'center',
+      paddingHorizontal: 40,
+    },
+  }), [themeColors]);
 
   useEffect(() => {
     if (isVisible) {
@@ -100,43 +246,43 @@ export const NotificationSheet: React.FC<NotificationSheetProps> = ({ isVisible,
         ]}
       >
         <BlurView intensity={90} tint="dark" style={StyleSheet.absoluteFill} />
-        
+
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
             <View style={styles.iconCircle}>
-              <Bell size={20} color={Colors.accentBlue} />
+              <Bell size={20} color={themeColors.accentBlue} />
             </View>
             <Text style={styles.headerTitle}>Notifications</Text>
           </View>
           <View style={styles.headerActions}>
             {notifications.some(n => !n.isRead) && (
-              <Pressable 
-                onPress={() => { trigger('light'); markAllAsRead(); }} 
+              <Pressable
+                onPress={() => { trigger('light'); markAllAsRead(); }}
                 style={styles.actionBtn}
               >
-                <CheckCheck size={18} color={Colors.textTertiary} />
+                <CheckCheck size={18} color={themeColors.textTertiary} />
               </Pressable>
             )}
-            <Pressable 
-              onPress={() => { trigger('light'); clearNotifications(); }} 
+            <Pressable
+              onPress={() => { trigger('light'); clearNotifications(); }}
               style={styles.actionBtn}
             >
-              <Trash2 size={18} color={Colors.textTertiary} />
+              <Trash2 size={18} color={themeColors.textTertiary} />
             </Pressable>
             <Pressable onPress={() => { trigger('light'); onClose(); }} style={styles.closeBtn}>
-              <X size={20} color={Colors.textSecondary} />
+              <X size={20} color={themeColors.textSecondary} />
             </Pressable>
           </View>
         </View>
 
-        <ScrollView 
+        <ScrollView
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
         >
           {notifications.length > 0 ? (
             notifications.map((notif) => (
-              <Pressable 
+              <Pressable
                 key={notif.id}
                 onPress={() => {
                   trigger('light');
@@ -147,10 +293,10 @@ export const NotificationSheet: React.FC<NotificationSheetProps> = ({ isVisible,
                   !notif.isRead && styles.unreadItem
                 ]}
               >
-                <View style={[styles.typeIcon, { backgroundColor: `${Colors.backgroundTertiary}` }]}>
-                  <NotificationIcon type={notif.type} />
+                <View style={[styles.typeIcon, { backgroundColor: themeColors.backgroundTertiary }]}>
+                  <NotificationIcon type={notif.type} Colors={themeColors} />
                 </View>
-                
+
                 <View style={styles.notifBody}>
                   <View style={styles.notifHeader}>
                     <Text style={styles.notifTitle}>{notif.title}</Text>
@@ -163,7 +309,7 @@ export const NotificationSheet: React.FC<NotificationSheetProps> = ({ isVisible,
             ))
           ) : (
             <View style={styles.emptyState}>
-              <Bell size={48} color={Colors.cardBorder} strokeWidth={1} />
+              <Bell size={48} color={themeColors.cardBorder} strokeWidth={1} />
               <Text style={styles.emptyTitle}>All caught up!</Text>
               <Text style={styles.emptyText}>No new notifications at the moment.</Text>
             </View>
@@ -173,147 +319,3 @@ export const NotificationSheet: React.FC<NotificationSheetProps> = ({ isVisible,
     </View>
   );
 };
-
-const styles = StyleSheet.create({
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-  },
-  sheet: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: SCREEN_HEIGHT * 0.7,
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    overflow: 'hidden',
-    backgroundColor: 'rgba(10, 10, 10, 0.9)',
-    borderTopWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.xl,
-    paddingVertical: Spacing.lg,
-    borderBottomWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.05)',
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.md,
-  },
-  iconCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(46, 91, 255, 0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    fontFamily: Typography.fontFamily.bold,
-    fontSize: Typography.fontSize.lg,
-    color: Colors.textPrimary,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  actionBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  closeBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 4,
-  },
-  listContent: {
-    padding: Spacing.lg,
-    paddingBottom: 40,
-  },
-  notificationItem: {
-    flexDirection: 'row',
-    padding: Spacing.lg,
-    borderRadius: 20,
-    marginBottom: Spacing.md,
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  unreadItem: {
-    backgroundColor: 'rgba(46, 91, 255, 0.05)',
-    borderColor: 'rgba(46, 91, 255, 0.1)',
-  },
-  typeIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: Spacing.md,
-  },
-  notifBody: {
-    flex: 1,
-  },
-  notifHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  notifTitle: {
-    fontFamily: Typography.fontFamily.bold,
-    fontSize: 15,
-    color: Colors.textPrimary,
-  },
-  unreadDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: Colors.accentBlue,
-  },
-  notifMessage: {
-    fontFamily: Typography.fontFamily.regular,
-    fontSize: 13,
-    color: Colors.textSecondary,
-    lineHeight: 18,
-    marginBottom: 8,
-  },
-  notifTime: {
-    fontFamily: Typography.fontFamily.medium,
-    fontSize: 11,
-    color: Colors.textMuted,
-  },
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 80,
-  },
-  emptyTitle: {
-    fontFamily: Typography.fontFamily.bold,
-    fontSize: Typography.fontSize.lg,
-    color: Colors.textPrimary,
-    marginTop: Spacing.lg,
-    marginBottom: 8,
-  },
-  emptyText: {
-    fontFamily: Typography.fontFamily.regular,
-    fontSize: Typography.fontSize.sm,
-    color: Colors.textTertiary,
-    textAlign: 'center',
-    paddingHorizontal: 40,
-  },
-});

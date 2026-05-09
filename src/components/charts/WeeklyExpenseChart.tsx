@@ -1,44 +1,47 @@
-/**
- * Kairo — Weekly Expense Chart
- * Custom smooth curved line chart using React Native SVG
- */
-
 import React from 'react';
-import { View, StyleSheet, Dimensions } from 'react-native';
-import Svg, { Path, Defs, LinearGradient, Stop } from 'react-native-svg';
-import { Colors, Spacing } from '../../theme';
+import { View, StyleSheet, Dimensions, Text } from 'react-native';
+import Svg, { Path, Defs, LinearGradient, Stop, Circle } from 'react-native-svg';
+import { Spacing, Typography } from '../../theme';
+import { useThemeColors } from '../../hooks/useTheme';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const CHART_WIDTH = SCREEN_WIDTH - Spacing.xl * 2;
-const CHART_HEIGHT = 100;
+const CHART_WIDTH = SCREEN_WIDTH - (Spacing.base + Spacing.xl) * 2;
+const CHART_HEIGHT = 120;
 
-interface DataPoint {
+export interface DataPoint {
   day: string;
   value: number;
 }
 
-const data: DataPoint[] = [
-  { day: 'M', value: 45 },
-  { day: 'T', value: 72 },
-  { day: 'W', value: 38 },
-  { day: 'T', value: 85 },
-  { day: 'F', value: 64 },
-  { day: 'S', value: 92 },
-  { day: 'S', value: 55 },
+interface WeeklyExpenseChartProps {
+  data?: DataPoint[];
+}
+
+const DEFAULT_DATA: DataPoint[] = [
+  { day: 'M', value: 0 },
+  { day: 'T', value: 0 },
+  { day: 'W', value: 0 },
+  { day: 'T', value: 0 },
+  { day: 'F', value: 0 },
+  { day: 'S', value: 0 },
+  { day: 'S', value: 0 },
 ];
 
-export const WeeklyExpenseChart = () => {
-  const maxVal = Math.max(...data.map(d => d.value));
-  const minVal = Math.min(...data.map(d => d.value));
-  const range = maxVal - minVal;
+export const WeeklyExpenseChart: React.FC<WeeklyExpenseChartProps> = ({ data }) => {
+  const { Colors } = useThemeColors();
+  const chartData = data && data.length > 0 ? data : DEFAULT_DATA;
+  const hasData = chartData.some(d => d.value > 0);
   
-  // Calculate points
-  const points = data.map((d, i) => ({
-    x: (i / (data.length - 1)) * CHART_WIDTH,
-    y: CHART_HEIGHT - ((d.value - minVal) / range) * (CHART_HEIGHT - 20) - 10
+  const maxVal = Math.max(...chartData.map(d => d.value), 100);
+  const minVal = 0; // Always start from 0 for expense charts
+  const range = maxVal - minVal;
+
+  const points = chartData.map((d, i) => ({
+    x: (i / (chartData.length - 1)) * CHART_WIDTH,
+    y: CHART_HEIGHT - ((d.value - minVal) / range) * (CHART_HEIGHT - 40) - 20
   }));
 
-  // Create path using Bezier curves for smoothness
+  // Create smooth cubic bezier path
   let d = `M ${points[0].x} ${points[0].y}`;
   for (let i = 0; i < points.length - 1; i++) {
     const p0 = points[i];
@@ -48,39 +51,78 @@ export const WeeklyExpenseChart = () => {
   }
 
   const fillPath = `${d} V ${CHART_HEIGHT} H ${points[0].x} Z`;
+  const lastPoint = points[points.length - 1];
 
   return (
     <View style={styles.container}>
-      <Svg width={CHART_WIDTH} height={CHART_HEIGHT}>
-        <Defs>
-          <LinearGradient id="gradient" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor={Colors.accentBlue} stopOpacity="0.4" />
-            <Stop offset="1" stopColor={Colors.accentBlue} stopOpacity="0" />
-          </LinearGradient>
-        </Defs>
-        
-        {/* Fill Area */}
-        <Path d={fillPath} fill="url(#gradient)" />
-        
-        {/* Line */}
-        <Path
-          d={d}
-          fill="none"
-          stroke={Colors.accentBlue}
-          strokeWidth="3"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </Svg>
+      <View style={styles.svgWrapper}>
+        <Svg width={CHART_WIDTH} height={CHART_HEIGHT}>
+          <Defs>
+            <LinearGradient id="fillGradient" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0" stopColor={Colors.accentBlue} stopOpacity="0.3" />
+              <Stop offset="1" stopColor={Colors.accentBlue} stopOpacity="0" />
+            </LinearGradient>
+          </Defs>
+          
+          {/* Fill Area */}
+          <Path d={fillPath} fill="url(#fillGradient)" />
+          
+          {/* Main Line */}
+          <Path
+            d={d}
+            fill="none"
+            stroke={Colors.accentBlue}
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          
+          {/* Indicator Dot for last point */}
+          {hasData && (
+            <Circle
+              cx={lastPoint.x}
+              cy={lastPoint.y}
+              r="4"
+              fill={Colors.accentBlue}
+            />
+          )}
+        </Svg>
+      </View>
+      
+      {/* X-Axis Labels */}
+      <View style={styles.labelsContainer}>
+        {chartData.map((d, i) => (
+          <Text 
+            key={i} 
+            style={[styles.label, { color: Colors.textMuted }]}
+          >
+            {d.day}
+          </Text>
+        ))}
+      </View>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
+    marginTop: Spacing.md,
+    width: '100%',
+  },
+  svgWrapper: {
     height: CHART_HEIGHT,
-    width: CHART_WIDTH,
     alignItems: 'center',
-    justifyContent: 'center',
+  },
+  labelsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 5,
+    marginTop: Spacing.xs,
+  },
+  label: {
+    fontFamily: Typography.fontFamily.medium,
+    fontSize: 10,
+    width: 20,
+    textAlign: 'center',
   },
 });
