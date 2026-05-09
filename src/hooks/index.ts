@@ -4,8 +4,8 @@
 
 export { useHaptics } from './useHaptics';
 export type { HapticType } from './useHaptics';
-export { useTransactions, useNetWorth, usePortfolio, useCategorySpending, useDailySpending } from './useDatabase';
-export type { PortfolioItem, CategorySpending } from './useDatabase';
+export { useTransactions, useNetWorth, usePortfolio, useCategorySpending, useDailySpending, useAccounts, useSavingsGoals, useBills, useDebts } from './useDatabase';
+export type { PortfolioItem, CategorySpending, AccountItem, SavingsGoal, Bill, Debt } from './useDatabase';
 export { useThemeColors } from './useTheme';
 export { useNotifications } from './useNotifications';
 export { useBudget } from './useBudget';

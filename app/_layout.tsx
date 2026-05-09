@@ -96,6 +96,8 @@ export default function RootLayout() {
               gestureEnabled: false,
             }}
           />
+          <Stack.Screen name="accounts" options={{ presentation: 'card', animation: 'slide_from_right' }} />
+          <Stack.Screen name="bills" options={{ presentation: 'card', animation: 'slide_from_right' }} />
         </Stack>
       </ErrorBoundary>
     </GestureHandlerRootView>

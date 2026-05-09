@@ -1,24 +1,14 @@
-import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
-import { Typography, Spacing, BorderRadius } from '../../theme';
+import React, { useMemo } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import Svg, { Path, Circle, Rect } from 'react-native-svg';
+import { Typography, Spacing } from '../../theme';
 import { useThemeColors } from '../../hooks/useTheme';
 import { Subscription } from '../../services/SubscriptionService';
 import { formatCurrency } from '../../utils/formatters';
 import { 
   RefreshCw, 
   AlertTriangle, 
-  CheckCircle, 
-  Play, 
-  Music, 
-  ShoppingBag, 
-  Smartphone, 
-  Tv, 
-  Video, 
-  Cpu,
-  Code,
-  Coffee,
-  Zap,
-  Globe
+  CheckCircle
 } from 'lucide-react-native';
 
 interface Props {
@@ -26,27 +16,70 @@ interface Props {
   onSimulateCancel: (sub: Subscription) => void;
 }
 
-const MERCHANT_CONFIG: Record<string, { color: string, icon: any, domain?: string }> = {
-  'netflix': { color: '#E50914', icon: Play, domain: 'netflix.com' },
-  'spotify': { color: '#1DB954', icon: Music, domain: 'spotify.com' },
-  'amazon': { color: '#FF9900', icon: ShoppingBag, domain: 'amazon.com' },
-  'apple': { color: '#A2AAAD', icon: Smartphone, domain: 'apple.com' },
-  'icloud': { color: '#007AFF', icon: Globe, domain: 'icloud.com' },
-  'youtube': { color: '#FF0000', icon: Video, domain: 'youtube.com' },
-  'chatgpt': { color: '#74AA9C', icon: Cpu, domain: 'openai.com' },
-  'github': { color: '#24292F', icon: Code, domain: 'github.com' },
-  'swiggy': { color: '#FC8019', icon: Coffee, domain: 'swiggy.com' },
-  'zomato': { color: '#CB202D', icon: Coffee, domain: 'zomato.com' },
-  'jio': { color: '#0F3D95', icon: Zap, domain: 'jio.com' },
-  'airtel': { color: '#ED1C24', icon: Zap, domain: 'airtel.in' },
-  'google': { color: '#4285F4', icon: Globe, domain: 'google.com' },
-  'notion': { color: '#000000', icon: Globe, domain: 'notion.so' },
-  'linkedin': { color: '#0077B5', icon: Globe, domain: 'linkedin.com' },
+interface BrandLogoProps {
+  size?: number;
+  color?: string;
+}
+
+const NetflixLogo = ({ size = 32 }: BrandLogoProps) => (
+  <Svg width={size} height={size} viewBox="0 0 32 32">
+    <Path fill="#E50914" d="M8 5h4.2l7.6 16.3V5H24v22h-4.2l-7.6-16.3V27H8z" />
+    <Path fill="#B20710" d="M12.2 5h3.4L24 27h-3.5z" opacity="0.9" />
+  </Svg>
+);
+
+const SpotifyLogo = ({ size = 32 }: BrandLogoProps) => (
+  <Svg width={size} height={size} viewBox="0 0 32 32">
+    <Circle cx="16" cy="16" r="16" fill="#1DB954" />
+    <Path d="M9.5 12.1c4.6-1.4 9.1-1 13.2 1.2" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" fill="none" />
+    <Path d="M10.9 16.8c3.6-1.1 7-0.8 10.1 0.9" stroke="#fff" strokeWidth="2.3" strokeLinecap="round" fill="none" />
+    <Path d="M12.3 21.1c2.5-.7 4.8-.5 6.9.6" stroke="#fff" strokeWidth="2.1" strokeLinecap="round" fill="none" />
+  </Svg>
+);
+
+const YouTubeLogo = ({ size = 32 }: BrandLogoProps) => (
+  <Svg width={size} height={size} viewBox="0 0 32 32">
+    <Rect x="3" y="6" width="26" height="20" rx="7" fill="#FF0000" />
+    <Path fill="#fff" d="M14 12.2 20.6 16 14 19.8z" />
+  </Svg>
+);
+
+const AppleLogo = ({ size = 32 }: BrandLogoProps) => (
+  <Svg width={size} height={size} viewBox="0 0 32 32">
+    <Path
+      fill="#000"
+      d="M21.6 16.9c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.9-1.8-3.5-1.8-1.5-.2-2.9.9-3.7.9-.8 0-1.9-.8-3.2-.8-1.6 0-3.1.9-4 2.3-1.7 3-.4 7.4 1.3 9.8.8 1.2 1.8 2.5 3.1 2.5 1.3-.1 1.7-.8 3.2-.8 1.5 0 1.9.8 3.2.8 1.4 0 2.2-1.2 3-2.4.9-1.4 1.3-2.9 1.3-3-.1 0-2.7-1-2.7-4zm-2.5-7c.7-.9 1.1-2.1 1-3.3-1 .1-2.2.7-2.9 1.5-.6.8-1.2 2-1 3.2 1.1.1 2.2-.5 2.9-1.4z"
+    />
+  </Svg>
+);
+
+const BRAND_LOGOS: Record<string, React.FC<BrandLogoProps>> = {
+  'netflix': NetflixLogo,
+  'spotify': SpotifyLogo,
+  'youtube': YouTubeLogo,
+  'apple': AppleLogo,
+};
+
+const MERCHANT_CONFIG: Record<string, { color: string }> = {
+  'netflix': { color: '#E50914' },
+  'spotify': { color: '#1DB954' },
+  'amazon': { color: '#FF9900' },
+  'apple': { color: '#A2AAAD' },
+  'icloud': { color: '#007AFF' },
+  'youtube': { color: '#FF0000' },
+  'chatgpt': { color: '#74AA9C' },
+  'github': { color: '#24292F' },
+  'swiggy': { color: '#FC8019' },
+  'zomato': { color: '#CB202D' },
+  'jio': { color: '#0F3D95' },
+  'airtel': { color: '#ED1C24' },
+  'google': { color: '#4285F4' },
+  'notion': { color: '#000000' },
+  'linkedin': { color: '#0077B5' },
 };
 
 export function SubscriptionCard({ subscription, onSimulateCancel }: Props) {
   const { Colors, isDark } = useThemeColors();
-  const [imageError, setImageError] = useState(false);
   const daysUntilRenewal = Math.ceil((subscription.nextRenewalDate - Date.now()) / (1000 * 60 * 60 * 24));
   const isUrgent = daysUntilRenewal <= 3;
 
@@ -55,11 +88,18 @@ export function SubscriptionCard({ subscription, onSimulateCancel }: Props) {
     for (const key in MERCHANT_CONFIG) {
       if (name.includes(key)) return MERCHANT_CONFIG[key];
     }
-    return { color: Colors.accentBlue, icon: RefreshCw };
+    return { color: Colors.accentBlue };
   }, [subscription.merchantName, Colors]);
 
-  const logoUrl = config.domain ? `https://logo.clearbit.com/${config.domain}?size=128` : null;
-  const BrandIcon = config.icon;
+  const brandLogo = useMemo(() => {
+    const name = subscription.merchantName.toLowerCase();
+    for (const key in BRAND_LOGOS) {
+      if (name.includes(key)) return BRAND_LOGOS[key];
+    }
+    return undefined;
+  }, [subscription.merchantName]);
+
+  const BrandLogo = brandLogo;
 
   const styles = useMemo(() => StyleSheet.create({
     card: { 
@@ -81,17 +121,13 @@ export function SubscriptionCard({ subscription, onSimulateCancel }: Props) {
       width: 48,
       height: 48,
       borderRadius: 14,
-      backgroundColor: '#FFFFFF', // White background for logos to pop
+      backgroundColor: '#FFFFFF',
       alignItems: 'center',
       justifyContent: 'center',
       overflow: 'hidden',
       borderWidth: 1,
       borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
       padding: 4,
-    },
-    logoImage: {
-      width: '100%',
-      height: '100%',
     },
     fallbackIconWrapper: {
       width: 48,
@@ -129,14 +165,10 @@ export function SubscriptionCard({ subscription, onSimulateCancel }: Props) {
       <View style={styles.header}>
         <View style={styles.titleRow}>
           <View style={styles.iconWrapper}>
-            {logoUrl && !imageError ? (
-              <Image 
-                source={{ uri: logoUrl }} 
-                style={styles.logoImage} 
-                onError={() => setImageError(true)}
-              />
+            {BrandLogo ? (
+              <BrandLogo size={36} />
             ) : (
-              <BrandIcon size={22} color={config.color} />
+              <RefreshCw size={22} color={config.color} />
             )}
           </View>
           <View>

@@ -81,6 +81,7 @@ export const initDatabase = async () => {
         label TEXT NOT NULL,
         value REAL NOT NULL,
         category TEXT NOT NULL,
+        companySymbol TEXT,
         allocation REAL DEFAULT 0,
         change1D REAL DEFAULT 0,
         change1Y REAL DEFAULT 0,
@@ -204,16 +205,19 @@ export const initDatabase = async () => {
     if (portfolioCheck && portfolioCheck.count === 0) {
       logger.info('Seeding portfolio...');
       const portfolioData = [
-        { id: 'p1', label: 'Indian Equities', value: 2150000, category: 'stocks' },
-        { id: 'p2', label: 'Mutual Funds', value: 850000, category: 'funds' },
-        { id: 'p3', label: 'Fixed Deposits', value: 450000, category: 'deposits' },
-        { id: 'p4', label: 'Crypto', value: 360500, category: 'crypto' },
+        { id: 'p1', label: 'Netflix Inc.', value: 450000, category: 'stocks', companySymbol: 'NFLX' },
+        { id: 'p2', label: 'Apple Inc.', value: 650000, category: 'stocks', companySymbol: 'AAPL' },
+        { id: 'p3', label: 'Spotify Tech', value: 380000, category: 'stocks', companySymbol: 'SPOT' },
+        { id: 'p4', label: 'Alphabet (YouTube)', value: 520000, category: 'stocks', companySymbol: 'GOOGL' },
+        { id: 'p5', label: 'Mutual Funds', value: 850000, category: 'funds' },
+        { id: 'p6', label: 'Fixed Deposits', value: 450000, category: 'deposits' },
+        { id: 'p7', label: 'Crypto', value: 360500, category: 'crypto' },
       ];
       for (const item of portfolioData) {
         const now = Date.now();
         await database.runAsync(
-          'INSERT INTO portfolio (id, label, value, category, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
-          [item.id, item.label, item.value, item.category, now, now]
+          'INSERT INTO portfolio (id, label, value, category, companySymbol, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          [item.id, item.label, item.value, item.category, item.companySymbol || null, now, now]
         );
       }
     }
@@ -402,4 +406,76 @@ export const updateAccountBalance = async (accountId: string, newBalance: number
     'UPDATE accounts SET balance = ? WHERE id = ?',
     [newBalance, accountId]
   );
+};
+
+// ─── Savings Goals CRUD ─────────────────────────────────
+
+export interface SavingsGoalRow {
+  id: string;
+  name: string;
+  targetAmount: number;
+  currentAmount: number;
+  deadline: number;
+  category: string;
+  monthlyContribution: number;
+  created_at: number;
+  updated_at: number;
+  isCompleted: number;
+}
+
+export const createSavingsGoal = async (goal: Omit<SavingsGoalRow, 'created_at' | 'updated_at' | 'isCompleted' | 'currentAmount'>) => {
+  const database = await getDb();
+  const now = Date.now();
+  await database.runAsync(
+    `INSERT INTO savings_goals (id, name, targetAmount, currentAmount, deadline, category, monthlyContribution, created_at, updated_at, isCompleted)
+     VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, 0)`,
+    [goal.id, goal.name, goal.targetAmount, goal.deadline, goal.category, goal.monthlyContribution, now, now]
+  );
+};
+
+export const fetchSavingsGoal = async (id: string): Promise<SavingsGoalRow | null> => {
+  const database = await getDb();
+  const result = await database.getFirstAsync<SavingsGoalRow>(
+    'SELECT * FROM savings_goals WHERE id = ?',
+    [id]
+  );
+  return result;
+};
+
+export const fetchAllSavingsGoals = async (includeCompleted: boolean = false): Promise<SavingsGoalRow[]> => {
+  const database = await getDb();
+  const query = includeCompleted 
+    ? 'SELECT * FROM savings_goals ORDER BY deadline ASC' 
+    : 'SELECT * FROM savings_goals WHERE isCompleted = 0 ORDER BY deadline ASC';
+  return database.getAllAsync<SavingsGoalRow>(query);
+};
+
+export const updateSavingsGoal = async (id: string, updates: Partial<Pick<SavingsGoalRow, 'name' | 'targetAmount' | 'currentAmount' | 'deadline' | 'monthlyContribution' | 'isCompleted'>>) => {
+  const database = await getDb();
+  const now = Date.now();
+  const fields = Object.keys(updates).map(k => `${k} = ?`).join(', ');
+  const values = Object.values(updates);
+  await database.runAsync(
+    `UPDATE savings_goals SET ${fields}, updated_at = ? WHERE id = ?`,
+    [...values, now, id]
+  );
+};
+
+export const deleteSavingsGoal = async (id: string) => {
+  const database = await getDb();
+  await database.runAsync('DELETE FROM savings_goals WHERE id = ?', [id]);
+};
+
+export const addToSavingsGoal = async (id: string, amount: number) => {
+  const database = await getDb();
+  const now = Date.now();
+  await database.runAsync(
+    'UPDATE savings_goals SET currentAmount = currentAmount + ?, updated_at = ? WHERE id = ?',
+    [amount, now, id]
+  );
+  // Check if goal is now complete
+  const goal = await fetchSavingsGoal(id);
+  if (goal && goal.currentAmount >= goal.targetAmount) {
+    await database.runAsync('UPDATE savings_goals SET isCompleted = 1, updated_at = ? WHERE id = ?', [now, id]);
+  }
 };
