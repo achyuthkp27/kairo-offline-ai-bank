@@ -1197,7 +1197,7 @@ export const AIAssistantSheet: React.FC<AIAssistantSheetProps> = ({ isVisible, o
                     <View style={styles.heroTopRow}>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.heroEyebrow}>{getGreeting()}</Text>
-                        <Text style={styles.heroTitle}>Welcome {welcomeName}. Meet Luxe-Bot, your private finance assistant.</Text>
+                        <Text style={styles.heroTitle}>Welcome {welcomeName}. Meet Kairo AI, your private finance assistant.</Text>
                         <Text style={styles.heroSubtitle}>
                           Ask for spending insights, smarter transfers, portfolio context, or a clean summary before your next move.
                         </Text>
