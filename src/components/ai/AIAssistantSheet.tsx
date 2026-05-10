@@ -16,20 +16,21 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
-  TextStyle,
   Keyboard,
 } from 'react-native';
+import * as Speech from 'expo-speech';
 import { BlurView } from 'expo-blur';
 import { useRouter } from 'expo-router';
-import { X, Sparkles, Lock, Square, Trash2, Mic, Copy, ArrowUp, MicOff } from 'lucide-react-native';
+import { X, Sparkles, Lock, Square, Trash2, Mic, ArrowUp, MicOff, Shield, TrendingUp, Wallet, ArrowRight, Volume2 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Voice, { SpeechResultsEvent, SpeechErrorEvent } from '@react-native-voice/voice';
 
 import { Typography, Spacing, BorderRadius } from '../../theme';
 import { useHaptics, useThemeColors } from '../../hooks';
 import { useLlama } from '../../hooks/useLlama';
-import { useUIStore, useAccountStore } from '../../store';
+import { useUIStore, useAccountStore, useAuthStore } from '../../store';
 import type { AIAction } from '../../store/chatStore';
+import { formatCurrency, getGreeting } from '../../utils/formatters';
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -51,6 +52,29 @@ const QUICK_ACTIONS = [
   { id: 'budget', label: 'Budget', icon: '📊' },
   { id: 'transfer', label: 'Transfer', icon: '💸' },
   { id: 'portfolio', label: 'Portfolio', icon: '📈' },
+];
+
+const STARTER_PROMPTS = [
+  {
+    id: 'prompt-spending',
+    title: 'Where did I overspend this week?',
+    subtitle: 'Spot leaks across subscriptions, dining, and impulse buys.',
+  },
+  {
+    id: 'prompt-savings',
+    title: 'How much can I safely save this month?',
+    subtitle: 'Balance bills, EMI, and investing without hurting cash flow.',
+  },
+  {
+    id: 'prompt-transfer',
+    title: 'Help me plan a smart transfer',
+    subtitle: 'Move money between accounts with context on impact.',
+  },
+  {
+    id: 'prompt-wealth',
+    title: 'Summarize my portfolio health',
+    subtitle: 'Review allocation, momentum, and what needs attention.',
+  },
 ];
 
 const ThinkingIndicator = ({ styles }: { styles: ReturnType<typeof StyleSheet.create> }) => {
@@ -154,19 +178,46 @@ export const AIAssistantSheet: React.FC<AIAssistantSheetProps> = ({ isVisible, o
   const { trigger } = useHaptics();
   const { Colors, isDark } = useThemeColors();
   const { initialAIQuery, setInitialAIQuery } = useUIStore();
+  const accounts = useAccountStore((state) => state.accounts);
+  const accountDetails = useAccountStore((state) => state.accountDetails);
+  const userId = useAuthStore((state) => state.userId);
   const [inputText, setInputText] = useState('');
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
-  const [showSuggestions, setShowSuggestions] = useState(true);
   const [isInputFocused, setIsInputFocused] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [partialResults, setPartialResults] = useState<string[]>([]);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
+  const [pendingVoiceText, setPendingVoiceText] = useState<string | null>(null);
+  const [inputDisplayText, setInputDisplayText] = useState('');
   
   const router = useRouter();
   const scrollViewRef = useRef<ScrollView>(null);
   const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const [isSheetMounted, setIsSheetMounted] = useState(false);
+
+  const isVisibleRef = useRef(isVisible);
+
+  useEffect(() => {
+    if (isVisible && !isVisibleRef.current) {
+      isVisibleRef.current = true;
+      setIsSheetMounted(true);
+      Animated.parallel([
+        Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, tension: 65, friction: 11 }),
+        Animated.timing(fadeAnim, { toValue: 1, duration: 250, useNativeDriver: true }),
+      ]).start();
+    } else if (!isVisible && isVisibleRef.current) {
+      Animated.parallel([
+        Animated.timing(slideAnim, { toValue: SCREEN_HEIGHT, duration: 250, useNativeDriver: true }),
+        Animated.timing(fadeAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
+      ]).start(() => {
+        if (mountedRef.current) setIsSheetMounted(false);
+        isVisibleRef.current = false;
+      });
+    }
+  }, [isVisible, slideAnim, fadeAnim]);
 
   const WORD_TO_TAB: Record<string, string> = {
     investment: 'wealth', investments: 'wealth', portfolio: 'wealth', wealth: 'wealth',
@@ -175,14 +226,29 @@ export const AIAssistantSheet: React.FC<AIAssistantSheetProps> = ({ isVisible, o
     transaction: 'transactions', transactions: 'transactions', activity: 'transactions',
     ai: 'ai', chat: 'ai',
   };
-  
-  const accountsRef = useRef(useAccountStore.getState().accounts);
 
-  useEffect(() => {
-    const unsub = useAccountStore.subscribe((state) => {
-      accountsRef.current = state.accounts;
-    });
-    return unsub;
+  const speak = useCallback(async (text: string) => {
+    if (!text) return;
+    try {
+      Speech.stop();
+      setIsSpeaking(true);
+      setSpeakingMessageId(null);
+      await Speech.speak(text, { language: 'en-US', pitch: 1.0, rate: 0.85 });
+    } catch (e) {
+      setIsSpeaking(false);
+      setSpeakingMessageId(null);
+    }
+  }, []);
+
+  const stopSpeaking = useCallback(async () => {
+    try {
+      Speech.stop();
+      setIsSpeaking(false);
+      setSpeakingMessageId(null);
+    } catch (e) {
+      setIsSpeaking(false);
+      setSpeakingMessageId(null);
+    }
   }, []);
 
   const onCloseRef = useRef(onClose);
@@ -238,99 +304,155 @@ export const AIAssistantSheet: React.FC<AIAssistantSheetProps> = ({ isVisible, o
     clearChat,
   } = useLlama(handleAction);
 
-  useEffect(() => {
-    const show = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
-      (e) => {
-        setIsKeyboardVisible(true);
-        setKeyboardHeight(e.endCoordinates.height);
-      }
-    );
-    const hide = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
-      () => {
-        setIsKeyboardVisible(false);
-        setKeyboardHeight(0);
-      }
-    );
+  const mountedRef = useRef(true);
+  const voiceSetupRef = useRef(false);
 
-    // Voice Setup
-    Voice.onSpeechStart = () => {
-      setIsListening(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!isListening && pendingVoiceText) {
+      const textToSend = pendingVoiceText;
+      setPendingVoiceText(null);
       trigger('light');
+      setInputText('');
+      setInputDisplayText('');
+      sendMessage(textToSend);
+    }
+  }, [isListening, pendingVoiceText, trigger, sendMessage]);
+
+  useEffect(() => {
+    if (voiceSetupRef.current) return;
+    voiceSetupRef.current = true;
+
+    let show: ReturnType<typeof Keyboard.addListener> | null = null;
+    let hide: ReturnType<typeof Keyboard.addListener> | null = null;
+
+    try {
+      show = Keyboard.addListener(
+        Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+        (e) => {
+          if (mountedRef.current) {
+            setIsKeyboardVisible(true);
+            setKeyboardHeight(e.endCoordinates.height);
+          }
+        }
+      );
+      hide = Keyboard.addListener(
+        Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+        () => {
+          if (mountedRef.current) {
+            setIsKeyboardVisible(false);
+            setKeyboardHeight(0);
+          }
+        }
+      );
+    } catch (setupErr) {
+      voiceSetupRef.current = false;
+      return;
+    }
+
+    Voice.onSpeechStart = () => {
+      if (!mountedRef.current) return;
+      try { Speech.stop(); } catch (_) {}
+      if (mountedRef.current) {
+        setIsSpeaking(false);
+        setSpeakingMessageId(null);
+        setPartialResults([]);
+        setPendingVoiceText(null);
+        setInputDisplayText('');
+        setIsListening(true);
+        trigger('light');
+      }
     };
     Voice.onSpeechEnd = () => {
-      setIsListening(false);
+      if (mountedRef.current) setIsListening(false);
     };
     Voice.onSpeechError = (e: SpeechErrorEvent) => {
+      if (!mountedRef.current) return;
       console.error('Speech Error:', e);
-      setIsListening(false);
+      if (mountedRef.current) {
+        setIsListening(false);
+        setPartialResults([]);
+        setPendingVoiceText(null);
+        setInputDisplayText('');
+      }
     };
     Voice.onSpeechPartialResults = (e: SpeechResultsEvent) => {
+      if (!mountedRef.current) return;
       if (e.value) {
         setPartialResults(e.value);
-        setInputText(e.value[0]);
+        setInputDisplayText(e.value[e.value.length - 1] || '');
       }
     };
     Voice.onSpeechResults = (e: SpeechResultsEvent) => {
-      if (e.value) {
-        setInputText(e.value[0]);
+      if (!mountedRef.current) return;
+      const finalText = (e.value && e.value[0]) ? e.value[0].trim() : null;
+      if (mountedRef.current) {
+        setIsListening(false);
+        setPartialResults([]);
+        setInputDisplayText('');
+        if (finalText) {
+          setPendingVoiceText(finalText);
+          setInputDisplayText(finalText);
+        }
       }
-      setIsListening(false);
     };
 
     return () => { 
-      show.remove(); 
-      hide.remove(); 
-      Voice.destroy().then(Voice.removeAllListeners);
+      voiceSetupRef.current = false;
+      try { if (show) show.remove(); } catch (_) {}
+      try { if (hide) hide.remove(); } catch (_) {}
+      try { Voice.destroy().then(Voice.removeAllListeners); } catch (_) {}
+      try { Speech.stop(); } catch (_) {}
     };
-  }, []);
+  }, [trigger]);
 
-  const toggleListening = async () => {
+  const handleSend = useCallback(async () => {
+    const text = (inputText || inputDisplayText).trim();
+    if (!text || isTyping) return;
+    trigger('light');
+    setInputText('');
+    setInputDisplayText('');
+    setPendingVoiceText(null);
+    await sendMessage(text);
+  }, [inputText, inputDisplayText, isTyping, trigger, sendMessage]);
+
+  const toggleListening = useCallback(async () => {
     try {
       if (isListening) {
         await Voice.stop();
         setIsListening(false);
+        setPartialResults([]);
+        setInputDisplayText('');
       } else {
         trigger('light');
+        try { Speech.stop(); } catch (_) {}
+        setIsSpeaking(false);
+        setSpeakingMessageId(null);
         setPartialResults([]);
-        await Voice.start('en-IN'); // Default to Indian English
+        setPendingVoiceText(null);
+        setInputDisplayText('');
+        await Voice.start('en-IN');
       }
     } catch (e) {
       console.error('Voice Toggle Error:', e);
       Alert.alert('Microphone Error', 'Could not start voice recognition. Please ensure permissions are granted.');
     }
-  };
+  }, [isListening, trigger]);
 
-  useEffect(() => {
-    if (isVisible) {
-      setIsSheetMounted(true);
-      Animated.parallel([
-        Animated.spring(slideAnim, { toValue: 0, damping: 25, stiffness: 200, useNativeDriver: true }),
-        Animated.timing(fadeAnim, { toValue: 1, duration: 300, useNativeDriver: true }),
-      ]).start();
-
-      if (initialAIQuery) {
-        setTimeout(() => { sendMessage(initialAIQuery); setInitialAIQuery(''); }, 800);
-      }
-    } else {
-      Animated.parallel([
-        Animated.timing(slideAnim, { toValue: SCREEN_HEIGHT, duration: 250, useNativeDriver: true }),
-        Animated.timing(fadeAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
-      ]).start(() => {
-        setIsSheetMounted(false);
-      });
-    }
-  }, [isVisible, slideAnim, fadeAnim]);
-
-  const handleSend = async () => {
-    if (!inputText.trim() || isTyping) return;
+  const handleSpeakMessage = useCallback((msgId: string, text: string) => {
     trigger('light');
-    setShowSuggestions(false);
-    const textToSend = inputText;
-    setInputText('');
-    await sendMessage(textToSend);
-  };
+    if (speakingMessageId === msgId) {
+      stopSpeaking();
+    } else {
+      stopSpeaking();
+      setSpeakingMessageId(msgId);
+      speak(text);
+    }
+  }, [speakingMessageId, trigger, stopSpeaking, speak]);
 
   const handleCopy = () => {
     trigger('light');
@@ -341,6 +463,34 @@ export const AIAssistantSheet: React.FC<AIAssistantSheetProps> = ({ isVisible, o
     trigger('light');
     setInputText(label);
   };
+
+  const totalBalance = useMemo(
+    () => accounts.reduce((sum, account) => sum + account.balance, 0),
+    [accounts]
+  );
+  const activeAccount = useMemo(
+    () => accounts.find((account) => account.isActive) ?? accounts[0],
+    [accounts]
+  );
+  const welcomeName = useMemo(() => {
+    if (!userId) return 'back';
+    const cleanName = userId.replace(/\d+/g, '').trim();
+    return cleanName || 'back';
+  }, [userId]);
+  const canUseAssistant = modelReady && !isDownloading && isNativeAvailable;
+
+  const handlePromptPress = useCallback(async (prompt: string) => {
+    trigger('light');
+    if (isTyping) return;
+
+    if (canUseAssistant) {
+      setInputText('');
+      await sendMessage(prompt);
+      return;
+    }
+
+    setInputText(prompt);
+  }, [canUseAssistant, isTyping, sendMessage, trigger]);
 
   const styles = useMemo(() => StyleSheet.create({
     backdrop: {
@@ -412,6 +562,11 @@ export const AIAssistantSheet: React.FC<AIAssistantSheetProps> = ({ isVisible, o
       backgroundColor: Colors.backgroundTertiary,
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    actionBtnActive: {
+      backgroundColor: Colors.accentBlue + '20',
+      borderWidth: 1,
+      borderColor: Colors.accentBlue + '40',
     },
     closeBtn: {
       width: 36,
@@ -488,6 +643,23 @@ export const AIAssistantSheet: React.FC<AIAssistantSheetProps> = ({ isVisible, o
     copyButton: {
       padding: 2,
     },
+    speakBtn: {
+      position: 'absolute',
+      bottom: 4,
+      right: 4,
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: Colors.backgroundTertiary,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: Colors.border,
+    },
+    speakBtnActive: {
+      backgroundColor: Colors.accentBlue,
+      borderColor: Colors.accentBlue,
+    },
     thinkingContainer: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -511,7 +683,6 @@ export const AIAssistantSheet: React.FC<AIAssistantSheetProps> = ({ isVisible, o
       fontStyle: 'italic',
     },
     quickActionsContainer: {
-      paddingHorizontal: Spacing.lg,
       paddingVertical: Spacing.sm,
       borderTopWidth: 1,
       borderTopColor: Colors.border,
@@ -519,6 +690,7 @@ export const AIAssistantSheet: React.FC<AIAssistantSheetProps> = ({ isVisible, o
     quickActionsRow: {
       flexDirection: 'row',
       gap: Spacing.sm,
+      paddingHorizontal: Spacing.lg,
     },
     quickActionChip: {
       flexDirection: 'row',
@@ -537,6 +709,163 @@ export const AIAssistantSheet: React.FC<AIAssistantSheetProps> = ({ isVisible, o
     suggestionsContainer: {
       paddingHorizontal: Spacing.lg,
       paddingVertical: Spacing.md,
+    },
+    welcomeContainer: {
+      gap: Spacing.md,
+      paddingBottom: Spacing.lg,
+    },
+    heroCard: {
+      borderRadius: BorderRadius.xl,
+      overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: Colors.border,
+    },
+    heroGradient: {
+      paddingHorizontal: Spacing.lg,
+      paddingVertical: Spacing.md,
+      gap: Spacing.md,
+    },
+    heroTopRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: Spacing.sm,
+    },
+    heroEyebrow: {
+      fontFamily: Typography.fontFamily.medium,
+      fontSize: Typography.fontSize.xs,
+      letterSpacing: Typography.letterSpacing.widest,
+      color: Colors.textSecondary,
+      textTransform: 'uppercase',
+      marginBottom: Spacing.xs,
+    },
+    heroTitle: {
+      fontFamily: Typography.fontFamily.extraBold,
+      fontSize: Typography.fontSize.xl,
+      lineHeight: 28,
+      color: Colors.textPrimary,
+      marginBottom: Spacing.xs,
+    },
+    heroSubtitle: {
+      fontFamily: Typography.fontFamily.regular,
+      fontSize: Typography.fontSize.sm,
+      lineHeight: 20,
+      color: Colors.textSecondary,
+      maxWidth: '96%',
+    },
+    heroOrb: {
+      width: 42,
+      height: 42,
+      borderRadius: 21,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: 'rgba(255,255,255,0.08)',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.12)',
+    },
+    heroBadgeRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: Spacing.xs,
+    },
+    heroInfoPill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      paddingHorizontal: Spacing.sm,
+      paddingVertical: 6,
+      borderRadius: BorderRadius.full,
+      backgroundColor: 'rgba(255,255,255,0.08)',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.08)',
+    },
+    heroInfoText: {
+      fontFamily: Typography.fontFamily.medium,
+      fontSize: Typography.fontSize.xs,
+      color: Colors.textPrimary,
+    },
+    statGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: Spacing.sm,
+    },
+    statCard: {
+      width: '47.5%',
+      paddingHorizontal: Spacing.md,
+      paddingVertical: Spacing.sm,
+      borderRadius: BorderRadius.lg,
+      backgroundColor: Colors.cardSurface,
+      borderWidth: 1,
+      borderColor: Colors.border,
+      gap: 6,
+    },
+    statIconWrap: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: Colors.backgroundTertiary,
+    },
+    statLabel: {
+      fontFamily: Typography.fontFamily.medium,
+      fontSize: Typography.fontSize.xs,
+      color: Colors.textMuted,
+      textTransform: 'uppercase',
+      letterSpacing: Typography.letterSpacing.wide,
+    },
+    statValue: {
+      fontFamily: Typography.fontFamily.bold,
+      fontSize: Typography.fontSize.sm,
+      color: Colors.textPrimary,
+    },
+    statSubtext: {
+      fontFamily: Typography.fontFamily.regular,
+      fontSize: Typography.fontSize.xs,
+      color: Colors.textSecondary,
+    },
+    sectionLabel: {
+      fontFamily: Typography.fontFamily.bold,
+      fontSize: Typography.fontSize.sm,
+      color: Colors.textPrimary,
+      marginBottom: Spacing.sm,
+    },
+    starterCard: {
+      paddingHorizontal: Spacing.md,
+      paddingVertical: Spacing.sm,
+      borderRadius: BorderRadius.lg,
+      backgroundColor: Colors.cardSurface,
+      borderWidth: 1,
+      borderColor: Colors.border,
+      marginBottom: Spacing.sm,
+      gap: 4,
+    },
+    starterTitleRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: Spacing.sm,
+    },
+    starterTitle: {
+      flex: 1,
+      fontFamily: Typography.fontFamily.semiBold,
+      fontSize: Typography.fontSize.sm,
+      lineHeight: 18,
+      color: Colors.textPrimary,
+    },
+    starterSubtitle: {
+      fontFamily: Typography.fontFamily.regular,
+      fontSize: Typography.fontSize.xs,
+      lineHeight: 16,
+      color: Colors.textSecondary,
+    },
+    starterArrow: {
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: Colors.accentBlueSoft,
     },
     suggestionPill: {
       alignSelf: 'flex-start',
@@ -594,6 +923,9 @@ export const AIAssistantSheet: React.FC<AIAssistantSheetProps> = ({ isVisible, o
       alignItems: 'center',
       justifyContent: 'center',
     },
+    voiceButtonDisabled: {
+      opacity: 0.4,
+    },
     sendButton: {
       width: 44,
       height: 44,
@@ -617,18 +949,22 @@ export const AIAssistantSheet: React.FC<AIAssistantSheetProps> = ({ isVisible, o
     },
     downloadContainer: {
       paddingHorizontal: Spacing.lg,
-      marginTop: Spacing.xl,
+      paddingTop: Spacing.sm,
+      paddingBottom: Spacing.sm,
+      borderTopWidth: 1,
+      borderTopColor: Colors.border,
+      backgroundColor: Colors.cardSurface,
     },
     downloadCard: {
       borderRadius: BorderRadius.xl,
-      padding: Spacing.xl,
+      padding: Spacing.lg,
       borderWidth: 1,
       borderColor: Colors.border,
       alignItems: 'center',
     },
     downloadTitle: {
       fontFamily: Typography.fontFamily.bold,
-      fontSize: Typography.fontSize.lg,
+      fontSize: Typography.fontSize.base,
       color: Colors.textPrimary,
       marginBottom: Spacing.xs,
       textAlign: 'center',
@@ -637,12 +973,12 @@ export const AIAssistantSheet: React.FC<AIAssistantSheetProps> = ({ isVisible, o
       fontFamily: Typography.fontFamily.regular,
       fontSize: Typography.fontSize.sm,
       color: Colors.textSecondary,
-      marginBottom: Spacing.xl,
+      marginBottom: Spacing.md,
       textAlign: 'center',
     },
     primaryDownloadBtn: {
       backgroundColor: Colors.accentBlue,
-      paddingHorizontal: Spacing['2xl'],
+      paddingHorizontal: Spacing.xl,
       paddingVertical: Spacing.md,
       borderRadius: BorderRadius.lg,
       width: '100%',
@@ -692,7 +1028,7 @@ export const AIAssistantSheet: React.FC<AIAssistantSheetProps> = ({ isVisible, o
     downloadControls: {
       flexDirection: 'row',
       justifyContent: 'center',
-      marginTop: Spacing.lg,
+      marginTop: Spacing.md,
       gap: Spacing.md,
     },
     cancelActionBtn: {
@@ -803,6 +1139,8 @@ export const AIAssistantSheet: React.FC<AIAssistantSheetProps> = ({ isVisible, o
           >
             {messages.map((msg) => {
               const isUser = msg.sender === 'user';
+              const isBot = !isUser && msg.text && !msg.isStreaming;
+              const isCurrentlySpeaking = speakingMessageId === msg.id;
               return (
                 <View key={msg.id} style={[styles.messageWrapper, isUser && styles.userMessageWrapper]}>
                   {!isUser && (
@@ -823,6 +1161,19 @@ export const AIAssistantSheet: React.FC<AIAssistantSheetProps> = ({ isVisible, o
                       </View>
                     ) : null}
                   </View>
+
+                  {!isUser && isBot && (
+                    <Pressable
+                      style={[styles.speakBtn, isCurrentlySpeaking && styles.speakBtnActive]}
+                      onPress={() => handleSpeakMessage(msg.id, msg.text)}
+                    >
+                      {isCurrentlySpeaking ? (
+                        <Square size={10} color="#fff" fill="#fff" />
+                      ) : (
+                        <Volume2 size={14} color={isCurrentlySpeaking ? '#fff' : Colors.textSecondary} />
+                      )}
+                    </Pressable>
+                  )}
                 </View>
               );
             })}
@@ -834,22 +1185,143 @@ export const AIAssistantSheet: React.FC<AIAssistantSheetProps> = ({ isVisible, o
               </View>
             )}
 
-            {!isNativeAvailable && (
-              <View style={styles.downloadContainer}>
+            {messages.length === 0 && !isInitializing && (
+              <View style={styles.welcomeContainer}>
+                <View style={styles.heroCard}>
+                  <LinearGradient
+                    colors={isDark ? ['rgba(46, 91, 255, 0.22)', 'rgba(0, 212, 255, 0.08)', 'rgba(10, 10, 20, 0.96)'] : ['rgba(46, 91, 255, 0.14)', 'rgba(0, 212, 255, 0.06)', 'rgba(255, 255, 255, 0.96)']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.heroGradient}
+                  >
+                    <View style={styles.heroTopRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.heroEyebrow}>{getGreeting()}</Text>
+                        <Text style={styles.heroTitle}>Welcome {welcomeName}. Meet Luxe-Bot, your private finance assistant.</Text>
+                        <Text style={styles.heroSubtitle}>
+                          Ask for spending insights, smarter transfers, portfolio context, or a clean summary before your next move.
+                        </Text>
+                      </View>
+                      <View style={styles.heroOrb}>
+                        <Sparkles size={24} color={Colors.accentCyan} />
+                      </View>
+                    </View>
+
+                    <View style={styles.heroBadgeRow}>
+                      <View style={styles.heroInfoPill}>
+                        <Shield size={14} color={Colors.success} />
+                        <Text style={styles.heroInfoText}>Private on-device AI</Text>
+                      </View>
+                      <View style={styles.heroInfoPill}>
+                        <Mic size={14} color={Colors.accentCyan} />
+                        <Text style={styles.heroInfoText}>Voice ready</Text>
+                      </View>
+                    </View>
+                  </LinearGradient>
+                </View>
+
+                <View>
+                  <Text style={styles.sectionLabel}>Today at a glance</Text>
+                  <View style={styles.statGrid}>
+                    <View style={styles.statCard}>
+                      <View style={styles.statIconWrap}>
+                        <Wallet size={18} color={Colors.accentBlue} />
+                      </View>
+                      <Text style={styles.statLabel}>Total balance</Text>
+                      <Text style={styles.statValue}>{formatCurrency(totalBalance)}</Text>
+                      <Text style={styles.statSubtext}>{accounts.length} active money buckets</Text>
+                    </View>
+
+                    <View style={styles.statCard}>
+                      <View style={styles.statIconWrap}>
+                        <TrendingUp size={18} color={Colors.success} />
+                      </View>
+                      <Text style={styles.statLabel}>Portfolio</Text>
+                      <Text style={styles.statValue}>{formatCurrency(accountDetails.monthlyInterest)}</Text>
+                      <Text style={styles.statSubtext}>Passive growth this month</Text>
+                    </View>
+
+                    <View style={styles.statCard}>
+                      <View style={styles.statIconWrap}>
+                        <Sparkles size={18} color={Colors.gold} />
+                      </View>
+                      <Text style={styles.statLabel}>Rewards</Text>
+                      <Text style={styles.statValue}>{accountDetails.rewardPoints.toLocaleString()}</Text>
+                      <Text style={styles.statSubtext}>Points ready to be optimized</Text>
+                    </View>
+
+                    <View style={styles.statCard}>
+                      <View style={styles.statIconWrap}>
+                        <Shield size={18} color={Colors.accentCyan} />
+                      </View>
+                      <Text style={styles.statLabel}>Focused account</Text>
+                      <Text style={styles.statValue}>{activeAccount?.name ?? 'Primary account'}</Text>
+                      <Text style={styles.statSubtext}>{formatCurrency(activeAccount?.balance ?? 0)}</Text>
+                    </View>
+                  </View>
+                </View>
+
+                {canUseAssistant && (
+                  <View>
+                    <Text style={styles.sectionLabel}>Suggested questions</Text>
+                    {STARTER_PROMPTS.map((prompt) => (
+                      <Pressable
+                        key={prompt.id}
+                        style={styles.starterCard}
+                        onPress={() => handlePromptPress(prompt.title)}
+                      >
+                        <View style={styles.starterTitleRow}>
+                          <Text style={styles.starterTitle}>{prompt.title}</Text>
+                          <View style={styles.starterArrow}>
+                            <ArrowRight size={16} color={Colors.accentBlue} />
+                          </View>
+                        </View>
+                        <Text style={styles.starterSubtitle}>{prompt.subtitle}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                )}
+              </View>
+            )}
+          </ScrollView>
+
+          {messages.length > 0 && !isTyping && (
+            <View style={styles.quickActionsContainer}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.quickActionsRow}
+                keyboardShouldPersistTaps="handled"
+              >
+                {QUICK_ACTIONS.map((action) => (
+                  <Pressable 
+                    key={action.id}
+                    style={styles.quickActionChip}
+                    onPress={() => handleQuickAction(action.label)}
+                  >
+                    <Text style={{ fontSize: 16 }}>{action.icon}</Text>
+                    <Text style={styles.quickActionText}>{action.label}</Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            </View>
+          )}
+
+          {messages.length === 0 && !isInitializing && (!modelReady || isDownloading || !isNativeAvailable) && (
+            <View style={styles.downloadContainer}>
+              {!isNativeAvailable && (
                 <LinearGradient colors={['rgba(255, 77, 109, 0.1)', 'transparent']} style={styles.downloadCard}>
-                  <Lock size={32} color={Colors.error} />
+                  <Lock size={28} color={Colors.error} />
                   <Text style={[styles.downloadTitle, { color: Colors.error }]}>Standalone App Required</Text>
                   <Text style={styles.downloadSub}>
                     Run the Kairo app directly for full AI capabilities.
                   </Text>
                 </LinearGradient>
-              </View>
-            )}
+              )}
 
-            {isNativeAvailable && !modelExists && !isDownloading && (
-              <View style={styles.downloadContainer}>
+              {isNativeAvailable && !modelExists && !isDownloading && (
                 <LinearGradient colors={[Colors.accentBlue + '15', 'transparent']} style={styles.downloadCard}>
-                  <Sparkles size={32} color={Colors.accentBlue} />
+                  <Sparkles size={28} color={Colors.accentBlue} />
                   <Text style={styles.downloadTitle}>Download AI Engine</Text>
                   <Text style={styles.downloadSub}>
                     2GB local model for private, offline AI assistance.
@@ -858,11 +1330,9 @@ export const AIAssistantSheet: React.FC<AIAssistantSheetProps> = ({ isVisible, o
                     <Text style={styles.primaryDownloadBtnText}>Download (2.0 GB)</Text>
                   </Pressable>
                 </LinearGradient>
-              </View>
-            )}
+              )}
 
-            {isDownloading && (
-              <View style={styles.downloadContainer}>
+              {isDownloading && (
                 <LinearGradient colors={[Colors.accentBlue + '10', 'transparent']} style={styles.downloadCard}>
                   <View style={styles.progressBarBg}>
                     <Animated.View style={[styles.progressBarFill, { width: `${downloadProgress * 100}%` }]} />
@@ -880,24 +1350,7 @@ export const AIAssistantSheet: React.FC<AIAssistantSheetProps> = ({ isVisible, o
                     </Pressable>
                   </View>
                 </LinearGradient>
-              </View>
-            )}
-          </ScrollView>
-
-          {messages.length === 1 && !isTyping && (
-            <View style={styles.quickActionsContainer}>
-              <View style={styles.quickActionsRow}>
-                {QUICK_ACTIONS.map((action) => (
-                  <Pressable 
-                    key={action.id}
-                    style={styles.quickActionChip}
-                    onPress={() => handleQuickAction(action.label)}
-                  >
-                    <Text style={{ fontSize: 16 }}>{action.icon}</Text>
-                    <Text style={styles.quickActionText}>{action.label}</Text>
-                  </Pressable>
-                ))}
-              </View>
+              )}
             </View>
           )}
 
@@ -908,10 +1361,10 @@ export const AIAssistantSheet: React.FC<AIAssistantSheetProps> = ({ isVisible, o
             <View style={[styles.inputContainer, isInputFocused && styles.inputContainerActive]}>
               <TextInput
                 style={styles.input}
-                placeholder="Ask about your finances..."
+                placeholder={isListening ? "Listening..." : "Ask about your finances..."}
                 placeholderTextColor={Colors.textMuted}
-                value={inputText}
-                onChangeText={setInputText}
+                value={isListening ? inputDisplayText : (inputText || inputDisplayText)}
+                onChangeText={(text) => { setInputText(text); setInputDisplayText(''); }}
                 multiline={false}
                 blurOnSubmit={true}
                 onSubmitEditing={handleSend}
@@ -922,13 +1375,14 @@ export const AIAssistantSheet: React.FC<AIAssistantSheetProps> = ({ isVisible, o
                 onBlur={() => setIsInputFocused(false)}
               />
               <Pressable 
-                style={styles.voiceButton}
+                style={[styles.voiceButton, !canUseAssistant && styles.voiceButtonDisabled]}
                 onPress={toggleListening}
+                disabled={!canUseAssistant}
               >
                 {isListening ? (
                   <MicOff size={18} color={Colors.accentBlue} />
                 ) : (
-                  <Mic size={18} color={Colors.textMuted} />
+                  <Mic size={18} color={canUseAssistant ? Colors.textMuted : Colors.textTertiary} />
                 )}
               </Pressable>
             </View>
